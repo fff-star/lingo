@@ -1,0 +1,111 @@
+/* Sentense Dictionary custom styles */
+
+.tag {
+  display: inline-block;
+  padding: 0.1em 0.5em;
+  margin: 0.1em;
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em;
+}
+
+.review-done {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+
+.review-card {
+  max-width: 600px;
+  margin: 2rem auto;
+  padding: 2rem;
+  border: 2px solid var(--pico-primary);
+  border-radius: 12px;
+}
+
+.review-card .front {
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.review-card .back {
+  padding: 1rem 0;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+
+.review-card .rating-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.review-card .rating-buttons button {
+  min-width: 80px;
+}
+
+table.striped td {
+  vertical-align: middle;
+}
+
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-indicator.htmx-request {
+  display: inline;
+}
+
+@media (max-width: 768px) {
+  .review-card {
+    margin: 1rem;
+    padding: 1rem;
+  }
+}
+
+.markdown-body code {
+  background: var(--pico-code-background);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.markdown-body pre {
+  background: var(--pico-code-background);
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-body table {
+  width: 100%;
+  margin-bottom: 1em;
+}
+
+.markdown-body table th,
+.markdown-body table td {
+  padding: 0.5em;
+  border: 1px solid var(--pico-muted-border-color);
+}
+
+.markdown-body table th {
+  background: var(--pico-table-row-striped-background);
+}
+
+.markdown-body img {
+  max-width: 100%;
+}

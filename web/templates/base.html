@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — Lingo</title>
+<link rel="stylesheet" href="/static/pico.min.css" onerror="var l=document.createElement('link');l.rel='stylesheet';l.href='https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css';document.head.appendChild(l)">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/htmx.min.js"></script>
+<script>if(typeof htmx==='undefined'){var s=document.createElement('script');s.src='https://unpkg.com/htmx.org@2.0.4';document.head.appendChild(s)}</script>
+<script src="/static/marked.min.js" onerror="var s=document.createElement('script');s.src='https://unpkg.com/marked@14.1.3/marked.min.js';document.head.appendChild(s)"></script>
+</head>
+<body>
+<nav class="container-fluid">
+  <ul>
+    <li><strong><a href="/">Lingo</a></strong></li>
+    <li><a href="/words">Words</a></li>
+    <li><a href="/phrases">Phrases</a></li>
+    <li><a href="/sentences">Sentences</a></li>
+    <li><a href="/articles">Articles</a></li>
+    <li><a href="/compositions">Compositions</a></li>
+    <li><a href="/review">Review</a></li>
+    <li><a href="/export">Export</a></li>
+  </ul>
+</nav>
+
+<main class="container">
+{{template "content" .}}
+</main>
+
+<footer class="container">
+  <small>Lingo — personal language material manager</small>
+</footer>
+<script>
+function renderMarkdown() {
+  document.querySelectorAll('.markdown-body').forEach(el => {
+    if (el.dataset.rendered) return
+    if (typeof marked === 'undefined') return // fallback: raw text with pre-wrap
+    try {
+      const md = el.textContent
+      el.innerHTML = marked.parse(md, { breaks: true, gfm: true })
+      el.style.whiteSpace = 'normal'
+      el.dataset.rendered = '1'
+    } catch (e) {
+      // parse error — keep raw text as fallback
+    }
+  })
+}
+document.addEventListener('DOMContentLoaded', renderMarkdown)
+document.addEventListener('htmx:afterSettle', renderMarkdown)
+</script>
+</body>
+</html>

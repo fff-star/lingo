@@ -1,0 +1,48 @@
+{{define "content"}}
+<h1>Review</h1>
+
+<div class="grid">
+  <article>
+    <h2>{{.DueCount}}</h2>
+    <p>Due Now</p>
+  </article>
+  <article>
+    <h2>{{.WordCount}}</h2>
+    <p>Total Words</p>
+  </article>
+  <article>
+    <h2>{{.PhraseCount}}</h2>
+    <p>Total Phrases</p>
+  </article>
+</div>
+
+<div hx-get="/review/stats" hx-trigger="load" hx-swap="outerHTML">
+  <p>Loading chart...</p>
+</div>
+
+{{if .Due}}
+<div id="review-card" style="margin-bottom:2rem">
+  <h3>Start Review Session</h3>
+  <div hx-get="/review/start" hx-trigger="load" hx-target="#review-card">
+    <p>Loading first card...</p>
+  </div>
+</div>
+
+<h3>Items Due ({{len .Due}})</h3>
+<table>
+  <thead><tr><th>Type</th><th>Item</th><th>Definition</th><th></th></tr></thead>
+  <tbody>
+  {{range .Due}}
+  <tr>
+    <td><span class="tag">{{.Type}}</span></td>
+    <td>{{.Text}}</td>
+    <td>{{.Def}}</td>
+    <td><a href="/review/start?type={{.Type}}&id={{.ID}}">Review</a></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>All caught up! No items due for review.</p>
+{{end}}
+{{end}}

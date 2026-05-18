@@ -1,0 +1,47 @@
+{{define "content"}}
+<h1>Dashboard</h1>
+
+<div class="grid">
+  <article>
+    <h2>{{.WordCount}}</h2>
+    <p><a href="/words">Words</a></p>
+  </article>
+  <article>
+    <h2>{{.PhraseCount}}</h2>
+    <p><a href="/phrases">Phrases</a></p>
+  </article>
+  <article>
+    <h2>{{.SentenceCount}}</h2>
+    <p><a href="/sentences">Sentences</a></p>
+  </article>
+  <article>
+    <h2>{{.ArticleCount}}</h2>
+    <p><a href="/articles">Articles</a></p>
+  </article>
+</div>
+
+<div class="grid">
+  <article>
+    <h2>{{.TagCount}}</h2>
+    <p>Tags</p>
+  </article>
+  <article>
+    <h2>{{.DueCount}}</h2>
+    <p><a href="/review">Due for Review</a></p>
+  </article>
+</div>
+
+{{if .Tags}}
+<h3>Tags</h3>
+<div class="tag-cloud">
+  {{range .Tags}}
+    <span class="tag">{{.Name}}</span>
+  {{end}}
+</div>
+{{end}}
+
+<div style="margin-top:2rem">
+  <a href="/review" role="button" class="secondary">Start Review</a>
+  <a href="/export" role="button" class="contrast">Export</a>
+</div>
+{{end}}

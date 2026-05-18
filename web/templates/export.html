@@ -1,0 +1,49 @@
+{{define "content"}}
+<h1>Export</h1>
+
+<div class="grid">
+  <article>
+    <h3>{{.WordCount}}</h3>
+    <p>Words</p>
+  </article>
+  <article>
+    <h3>{{.PhraseCount}}</h3>
+    <p>Phrases</p>
+  </article>
+  <article>
+    <h3>{{.SentenceCount}}</h3>
+    <p>Sentences</p>
+  </article>
+  <article>
+    <h3>{{.ArticleCount}}</h3>
+    <p>Articles</p>
+  </article>
+</div>
+
+<form method="POST" action="/export">
+  <fieldset>
+    <legend>Select types to export</legend>
+    <label><input type="checkbox" name="type" value="word" checked> Words</label>
+    <label><input type="checkbox" name="type" value="phrase" checked> Phrases</label>
+    <label><input type="checkbox" name="type" value="sentence" checked> Sentences</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Filter by tag (optional)</legend>
+    <select name="tag">
+      <option value="">All tags</option>
+      {{range .Tags}}
+      <option value="{{.}}">{{.}}</option>
+      {{end}}
+    </select>
+  </fieldset>
+
+  <fieldset>
+    <legend>Format</legend>
+    <label><input type="radio" name="format" value="text" checked> Tab-separated Text</label>
+    <label><input type="radio" name="format" value="csv"> CSV</label>
+  </fieldset>
+
+  <button type="submit">Download</button>
+</form>
+{{end}}
