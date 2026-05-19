@@ -60,7 +60,26 @@ func matchAll(s string, keywords []string) bool {
 	return true
 }
 
-func matchAnyTag(tags []string, filterTags []string) bool {
+func HasString(slice []string, target string) bool {
+	for _, s := range slice {
+		if s == target {
+			return true
+		}
+	}
+	return false
+}
+
+func RemoveString(slice []string, target string) []string {
+	result := make([]string, 0, len(slice))
+	for _, s := range slice {
+		if s != target {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+func MatchAnyTag(tags []string, filterTags []string) bool {
 	if len(filterTags) == 0 {
 		return true
 	}

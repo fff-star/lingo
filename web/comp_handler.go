@@ -227,3 +227,57 @@ func (s *Server) handleCompositionProcess(w http.ResponseWriter, r *http.Request
 		"Htmx":   isHtmx,
 	})
 }
+
+func (s *Server) handleCompositionProcessSSE(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	cfg, err := llm.ConfigFromEnv()
+	if err != nil {
+		http.Error(w, "LLM not configured: "+err.Error(), 400)
+		return
+	}
+
+	comp, err := s.Compositions.Get(id)
+	if err != nil {
+		http.Error(w, "composition not found", 404)
+		return
+	}
+
+	if comp.Content == "" {
+		http.Error(w, "composition has no content", 400)
+		return
+	}
+
+	send, err := setupSSE(w)
+	if err != nil {
+		return
+	}
+
+	send("progress", "Connected to LLM, sending request (this may take several minutes for long texts)...")
+
+	items, err := llm.AnalyzeComposition(cfg, comp.Content, comp.Title)
+	if err != nil {
+		send("error", "AI analysis failed: "+err.Error())
+		return
+	}
+
+	send("progress", "Response received, saving analysis...")
+
+	comp.AIAnalysis = items.ToAIAnalysis()
+	if len(items.SuggestedTags) > 0 {
+		existing := make(map[string]bool)
+		for _, t := range comp.Tags {
+			existing[t] = true
+		}
+		for _, t := range items.SuggestedTags {
+			if !existing[t] {
+				comp.Tags = append(comp.Tags, t)
+				existing[t] = true
+			}
+		}
+	}
+	comp.UpdatedAt = time.Now().UTC()
+	_ = s.Compositions.Update(*comp)
+
+	send("done", "/compositions/"+id)
+}

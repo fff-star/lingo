@@ -15,17 +15,17 @@ var templateFuncs = template.FuncMap{
 }
 
 type Server struct {
-	Words        *store.WordStore
-	Phrases      *store.PhraseStore
-	Sentences    *store.SentenceStore
-	Articles     *store.ArticleStore
-	Compositions *store.CompositionStore
-	Tags         *store.TagStore
-	ReviewLog    *store.ReviewLog
+	Words        store.WordStore
+	Phrases      store.PhraseStore
+	Sentences    store.SentenceStore
+	Articles     store.ArticleStore
+	Compositions store.CompositionStore
+	Tags         store.TagStore
+	ReviewLog    store.ReviewLog
 	templates    map[string]*template.Template
 }
 
-func New(ws *store.WordStore, ps *store.PhraseStore, ss *store.SentenceStore, as *store.ArticleStore, cs *store.CompositionStore, ts *store.TagStore, rl *store.ReviewLog, tmplFS fs.FS) (*Server, error) {
+func New(ws store.WordStore, ps store.PhraseStore, ss store.SentenceStore, as store.ArticleStore, cs store.CompositionStore, ts store.TagStore, rl store.ReviewLog, tmplFS fs.FS) (*Server, error) {
 	srv := &Server{
 		Words:        ws,
 		Phrases:      ps,
@@ -59,29 +59,36 @@ func (s *Server) Register(mux *http.ServeMux, staticFS fs.FS) {
 	// Words
 	mux.HandleFunc("GET /words", s.handleWords)
 	mux.HandleFunc("GET /words/lookup", s.handleWordLookup)
+	mux.HandleFunc("GET /words/check", s.handleWordCheck)
+	mux.HandleFunc("POST /words/quick-add", s.handleWordQuickAdd)
 	mux.HandleFunc("POST /words/add", s.handleWordAdd)
+	mux.HandleFunc("POST /words/batch", s.handleWordBatch)
 	mux.HandleFunc("GET /words/{id}", s.handleWordDetail)
 	mux.HandleFunc("PUT /words/{id}", s.handleWordUpdate)
 	mux.HandleFunc("DELETE /words/{id}", s.handleWordDelete)
 	// Phrases
 	mux.HandleFunc("GET /phrases", s.handlePhrases)
 	mux.HandleFunc("POST /phrases/add", s.handlePhraseAdd)
+	mux.HandleFunc("POST /phrases/batch", s.handlePhraseBatch)
 	mux.HandleFunc("GET /phrases/{id}", s.handlePhraseDetail)
 	mux.HandleFunc("PUT /phrases/{id}", s.handlePhraseUpdate)
 	mux.HandleFunc("DELETE /phrases/{id}", s.handlePhraseDelete)
 	// Sentences
 	mux.HandleFunc("GET /sentences", s.handleSentences)
 	mux.HandleFunc("POST /sentences/add", s.handleSentenceAdd)
+	mux.HandleFunc("POST /sentences/batch", s.handleSentenceBatch)
 	mux.HandleFunc("GET /sentences/{id}", s.handleSentenceDetail)
 	mux.HandleFunc("PUT /sentences/{id}", s.handleSentenceUpdate)
 	mux.HandleFunc("DELETE /sentences/{id}", s.handleSentenceDelete)
 	// Articles
 	mux.HandleFunc("GET /articles", s.handleArticles)
 	mux.HandleFunc("POST /articles/add", s.handleArticleAdd)
+	mux.HandleFunc("POST /articles/batch", s.handleArticleBatch)
 	mux.HandleFunc("GET /articles/{id}", s.handleArticleDetail)
 	mux.HandleFunc("PUT /articles/{id}", s.handleArticleUpdate)
 	mux.HandleFunc("DELETE /articles/{id}", s.handleArticleDelete)
 	mux.HandleFunc("POST /articles/{id}/process", s.handleArticleProcess)
+	mux.HandleFunc("GET /articles/{id}/process-stream", s.handleArticleProcessSSE)
 	// Compositions
 	mux.HandleFunc("GET /compositions", s.handleCompositions)
 	mux.HandleFunc("POST /compositions/add", s.handleCompositionAdd)
@@ -89,6 +96,7 @@ func (s *Server) Register(mux *http.ServeMux, staticFS fs.FS) {
 	mux.HandleFunc("PUT /compositions/{id}", s.handleCompositionUpdate)
 	mux.HandleFunc("DELETE /compositions/{id}", s.handleCompositionDelete)
 	mux.HandleFunc("POST /compositions/{id}/process", s.handleCompositionProcess)
+	mux.HandleFunc("GET /compositions/{id}/process-stream", s.handleCompositionProcessSSE)
 	// Review
 	mux.HandleFunc("/review", s.handleReview)
 	mux.HandleFunc("/review/start", s.handleReviewStart)
@@ -97,6 +105,7 @@ func (s *Server) Register(mux *http.ServeMux, staticFS fs.FS) {
 	// Export
 	mux.HandleFunc("/export", s.handleExport)
 	mux.HandleFunc("/stats", s.handleStats)
+	mux.HandleFunc("/stats/tags", s.handleStatsTags)
 
 	// Static files (embedded).
 	sub, err := fs.Sub(staticFS, "static")
@@ -131,4 +140,19 @@ func (s *Server) MustLoad() {
 	s.Articles.Load()
 	s.Compositions.Load()
 	s.Tags.Load()
+}
+
+func setupSSE(w http.ResponseWriter) (func(event, data string), error) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", 500)
+		return nil, fmt.Errorf("streaming not supported")
+	}
+	return func(event, data string) {
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+		flusher.Flush()
+	}, nil
 }

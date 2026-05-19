@@ -7,38 +7,36 @@ import (
 	"lingo/model"
 )
 
-type TagStore struct {
+type jsonTagStore struct {
 	mu       sync.RWMutex
 	filePath string
+	data     []model.Tag
 }
 
-func NewTagStore(filePath string) *TagStore {
-	return &TagStore{filePath: filePath}
+func NewJSONTagStore(filePath string) *jsonTagStore {
+	return &jsonTagStore{filePath: filePath}
 }
 
-func (s *TagStore) Load() ([]model.Tag, error) {
+func (s *jsonTagStore) Load() ([]model.Tag, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var tags []model.Tag
-	if err := readJSON(s.filePath, &tags); err != nil {
-		return nil, err
-	}
-	if tags == nil {
-		tags = []model.Tag{}
-	}
-	return tags, nil
+	return s.loadUnsafe()
 }
 
-func (s *TagStore) Save(tags []model.Tag) error {
+func (s *jsonTagStore) Save(tags []model.Tag) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if tags == nil {
 		tags = []model.Tag{}
 	}
-	return writeJSON(s.filePath, tags)
+	if err := writeJSON(s.filePath, tags); err != nil {
+		return err
+	}
+	s.data = tags
+	return nil
 }
 
-func (s *TagStore) Add(tag model.Tag) error {
+func (s *jsonTagStore) Add(tag model.Tag) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tags, err := s.loadUnsafe()
@@ -51,10 +49,14 @@ func (s *TagStore) Add(tag model.Tag) error {
 		}
 	}
 	tags = append(tags, tag)
-	return writeJSON(s.filePath, tags)
+	if err := writeJSON(s.filePath, tags); err != nil {
+		return err
+	}
+	s.data = tags
+	return nil
 }
 
-func (s *TagStore) Get(name string) (*model.Tag, error) {
+func (s *jsonTagStore) Get(name string) (*model.Tag, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	tags, err := s.loadUnsafe()
@@ -69,7 +71,7 @@ func (s *TagStore) Get(name string) (*model.Tag, error) {
 	return nil, ErrNotFound
 }
 
-func (s *TagStore) Rename(oldName, newName string) error {
+func (s *jsonTagStore) Rename(oldName, newName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tags, err := s.loadUnsafe()
@@ -87,10 +89,14 @@ func (s *TagStore) Rename(oldName, newName string) error {
 	if !found {
 		return ErrNotFound
 	}
-	return writeJSON(s.filePath, tags)
+	if err := writeJSON(s.filePath, tags); err != nil {
+		return err
+	}
+	s.data = tags
+	return nil
 }
 
-func (s *TagStore) Delete(name string) error {
+func (s *jsonTagStore) Delete(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tags, err := s.loadUnsafe()
@@ -100,13 +106,22 @@ func (s *TagStore) Delete(name string) error {
 	for i := range tags {
 		if strings.EqualFold(tags[i].Name, name) || strings.HasPrefix(tags[i].ID, name) {
 			tags = append(tags[:i], tags[i+1:]...)
-			return writeJSON(s.filePath, tags)
+			if err := writeJSON(s.filePath, tags); err != nil {
+				return err
+			}
+			s.data = tags
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *TagStore) loadUnsafe() ([]model.Tag, error) {
+func (s *jsonTagStore) loadUnsafe() ([]model.Tag, error) {
+	if s.data != nil {
+		out := make([]model.Tag, len(s.data))
+		copy(out, s.data)
+		return out, nil
+	}
 	var tags []model.Tag
 	if err := readJSON(s.filePath, &tags); err != nil {
 		return nil, err
@@ -114,5 +129,6 @@ func (s *TagStore) loadUnsafe() ([]model.Tag, error) {
 	if tags == nil {
 		tags = []model.Tag{}
 	}
-	return tags, nil
+	s.data = tags
+	return s.data, nil
 }

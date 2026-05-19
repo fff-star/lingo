@@ -12,9 +12,9 @@ import (
 	"lingo/store"
 )
 
-var wordStore *store.WordStore
+var wordStore store.WordStore
 
-func InitWord(s *store.WordStore) {
+func InitWord(s store.WordStore) {
 	wordStore = s
 }
 
@@ -133,6 +133,7 @@ func wordAdd(args []string) error {
 			manual = true
 		} else {
 			w.Phonetic = info.Phonetic
+			w.AudioURL = info.AudioURL
 			w.Definitions = info.Definitions
 			w.Examples = info.Examples
 			w.Inflections = info.Inflections

@@ -8,41 +8,39 @@ import (
 	"lingo/model"
 )
 
-type CompositionStore struct {
+type jsonCompositionStore struct {
 	mu       sync.RWMutex
 	filePath string
+	data     []model.Composition
 }
 
-func NewCompositionStore(filePath string) *CompositionStore {
-	return &CompositionStore{filePath: filePath}
+func NewJSONCompositionStore(filePath string) *jsonCompositionStore {
+	return &jsonCompositionStore{filePath: filePath}
 }
 
-func (s *CompositionStore) Load() ([]model.Composition, error) {
+func (s *jsonCompositionStore) Load() ([]model.Composition, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var items []model.Composition
-	if err := readJSON(s.filePath, &items); err != nil {
-		return nil, err
-	}
-	if items == nil {
-		items = []model.Composition{}
-	}
-	return items, nil
+	return s.loadUnsafe()
 }
 
-func (s *CompositionStore) Save(items []model.Composition) error {
+func (s *jsonCompositionStore) Save(items []model.Composition) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if items == nil {
 		items = []model.Composition{}
 	}
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *CompositionStore) Add(c model.Composition) error {
+func (s *jsonCompositionStore) Add(c model.Composition) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	items, err := loadCompositions(s.filePath)
+	items, err := s.loadUnsafe()
 	if err != nil {
 		return err
 	}
@@ -52,13 +50,17 @@ func (s *CompositionStore) Add(c model.Composition) error {
 		}
 	}
 	items = append(items, c)
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *CompositionStore) Get(idPrefix string) (*model.Composition, error) {
+func (s *jsonCompositionStore) Get(idPrefix string) (*model.Composition, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	items, err := loadCompositions(s.filePath)
+	items, err := s.loadUnsafe()
 	if err != nil {
 		return nil, err
 	}
@@ -70,48 +72,56 @@ func (s *CompositionStore) Get(idPrefix string) (*model.Composition, error) {
 	return nil, ErrNotFound
 }
 
-func (s *CompositionStore) Update(c model.Composition) error {
+func (s *jsonCompositionStore) Update(c model.Composition) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	items, err := loadCompositions(s.filePath)
+	items, err := s.loadUnsafe()
 	if err != nil {
 		return err
 	}
 	for i := range items {
 		if items[i].ID == c.ID {
 			items[i] = c
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *CompositionStore) Delete(idPrefix string) error {
+func (s *jsonCompositionStore) Delete(idPrefix string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	items, err := loadCompositions(s.filePath)
+	items, err := s.loadUnsafe()
 	if err != nil {
 		return err
 	}
 	for i := range items {
 		if strings.HasPrefix(items[i].ID, idPrefix) {
 			items = append(items[:i], items[i+1:]...)
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *CompositionStore) Search(keywords []string, tags []string) ([]model.Composition, error) {
+func (s *jsonCompositionStore) Search(keywords []string, tags []string) ([]model.Composition, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	items, err := loadCompositions(s.filePath)
+	items, err := s.loadUnsafe()
 	if err != nil {
 		return nil, err
 	}
 	var result []model.Composition
 	for _, c := range items {
-		if !matchAnyTag(c.Tags, tags) {
+		if !MatchAnyTag(c.Tags, tags) {
 			continue
 		}
 		if len(keywords) == 0 {
@@ -129,10 +139,10 @@ func (s *CompositionStore) Search(keywords []string, tags []string) ([]model.Com
 	return result, nil
 }
 
-func (s *CompositionStore) GetAllTags() ([]string, error) {
+func (s *jsonCompositionStore) GetAllTags() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	items, err := loadCompositions(s.filePath)
+	items, err := s.loadUnsafe()
 	if err != nil {
 		return nil, err
 	}
@@ -150,23 +160,29 @@ func (s *CompositionStore) GetAllTags() ([]string, error) {
 	return tags, nil
 }
 
-func (s *CompositionStore) Count() (int, error) {
+func (s *jsonCompositionStore) Count() (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	items, err := loadCompositions(s.filePath)
+	items, err := s.loadUnsafe()
 	if err != nil {
 		return 0, err
 	}
 	return len(items), nil
 }
 
-func loadCompositions(filePath string) ([]model.Composition, error) {
+func (s *jsonCompositionStore) loadUnsafe() ([]model.Composition, error) {
+	if s.data != nil {
+		out := make([]model.Composition, len(s.data))
+		copy(out, s.data)
+		return out, nil
+	}
 	var items []model.Composition
-	if err := readJSON(filePath, &items); err != nil {
+	if err := readJSON(s.filePath, &items); err != nil {
 		return nil, err
 	}
 	if items == nil {
 		items = []model.Composition{}
 	}
-	return items, nil
+	s.data = items
+	return s.data, nil
 }

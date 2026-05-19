@@ -61,6 +61,63 @@ func (s *Server) handlePhraseDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handlePhraseBatch(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", 400)
+		return
+	}
+	action := r.FormValue("action")
+	tagName := strings.TrimSpace(r.FormValue("tag"))
+	idsRaw := r.FormValue("ids")
+	var ids []string
+	for _, id := range strings.Split(idsRaw, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 || tagName == "" {
+		http.Error(w, "ids and tag are required", 400)
+		return
+	}
+	phrases, _ := s.Phrases.Load()
+	for i := range phrases {
+		p := &phrases[i]
+		if !store.HasString(ids, p.ID) {
+			continue
+		}
+		switch action {
+		case "tag":
+			if store.HasString(p.Tags, tagName) {
+				continue
+			}
+			p.Tags = append(p.Tags, tagName)
+		case "untag":
+			if !store.HasString(p.Tags, tagName) {
+				continue
+			}
+			p.Tags = store.RemoveString(p.Tags, tagName)
+		default:
+			http.Error(w, "unknown action: "+action, 400)
+			return
+		}
+		p.UpdatedAt = time.Now().UTC()
+		if err := s.Phrases.Update(*p); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	}
+	allPhrases, _ := s.Phrases.Search(nil, nil)
+	allTags, _ := s.Phrases.GetAllTags()
+	isHtmx := r.Header.Get("HX-Request") == "true"
+	s.render(w, r, "phrases.html", map[string]interface{}{
+		"Title":   "Phrases",
+		"Phrases": allPhrases,
+		"AllTags": allTags,
+		"Htmx":    isHtmx,
+	})
+}
+
 func (s *Server) handlePhraseAdd(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", 400)

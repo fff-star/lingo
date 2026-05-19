@@ -61,6 +61,63 @@ func (s *Server) handleArticleDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleArticleBatch(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", 400)
+		return
+	}
+	action := r.FormValue("action")
+	tagName := strings.TrimSpace(r.FormValue("tag"))
+	idsRaw := r.FormValue("ids")
+	var ids []string
+	for _, id := range strings.Split(idsRaw, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 || tagName == "" {
+		http.Error(w, "ids and tag are required", 400)
+		return
+	}
+	articles, _ := s.Articles.Load()
+	for i := range articles {
+		a := &articles[i]
+		if !store.HasString(ids, a.ID) {
+			continue
+		}
+		switch action {
+		case "tag":
+			if store.HasString(a.Tags, tagName) {
+				continue
+			}
+			a.Tags = append(a.Tags, tagName)
+		case "untag":
+			if !store.HasString(a.Tags, tagName) {
+				continue
+			}
+			a.Tags = store.RemoveString(a.Tags, tagName)
+		default:
+			http.Error(w, "unknown action: "+action, 400)
+			return
+		}
+		a.UpdatedAt = time.Now().UTC()
+		if err := s.Articles.Update(*a); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	}
+	allArticles, _ := s.Articles.Search(nil, nil)
+	allTags, _ := s.Articles.GetAllTags()
+	isHtmx := r.Header.Get("HX-Request") == "true"
+	s.render(w, r, "articles.html", map[string]interface{}{
+		"Title":    "Articles",
+		"Articles": allArticles,
+		"AllTags":  allTags,
+		"Htmx":     isHtmx,
+	})
+}
+
 func (s *Server) handleArticleAdd(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", 400)
@@ -202,7 +259,6 @@ func (s *Server) handleArticleProcess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store analysis inline — no additions to word/phrase/sentence stores.
 	a.AIAnalysis = items.ToAIAnalysis()
 
 	// Merge suggested tags.
@@ -227,4 +283,58 @@ func (s *Server) handleArticleProcess(w http.ResponseWriter, r *http.Request) {
 		"Detail": a,
 		"Htmx":   isHtmx,
 	})
+}
+
+func (s *Server) handleArticleProcessSSE(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	cfg, err := llm.ConfigFromEnv()
+	if err != nil {
+		http.Error(w, "LLM not configured: "+err.Error(), 400)
+		return
+	}
+
+	a, err := s.Articles.Get(id)
+	if err != nil {
+		http.Error(w, "article not found", 404)
+		return
+	}
+
+	if a.Content == "" {
+		http.Error(w, "article has no content", 400)
+		return
+	}
+
+	send, err := setupSSE(w)
+	if err != nil {
+		return
+	}
+
+	send("progress", "Connected to LLM, sending request (this may take several minutes for long articles)...")
+
+	items, err := llm.ProcessArticle(cfg, a.Content, a.Title)
+	if err != nil {
+		send("error", "LLM processing failed: "+err.Error())
+		return
+	}
+
+	send("progress", "Response received, saving analysis...")
+
+	a.AIAnalysis = items.ToAIAnalysis()
+	if len(items.SuggestedTags) > 0 {
+		existing := make(map[string]bool)
+		for _, t := range a.Tags {
+			existing[t] = true
+		}
+		for _, t := range items.SuggestedTags {
+			if !existing[t] {
+				a.Tags = append(a.Tags, t)
+				existing[t] = true
+			}
+		}
+	}
+	a.UpdatedAt = time.Now().UTC()
+	_ = s.Articles.Update(*a)
+
+	send("done", "/articles/"+id)
 }

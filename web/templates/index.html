@@ -1,47 +1,81 @@
 {{define "content"}}
 <h1>Dashboard</h1>
 
-<div class="grid">
-  <article>
-    <h2>{{.WordCount}}</h2>
-    <p><a href="/words">Words</a></p>
-  </article>
-  <article>
-    <h2>{{.PhraseCount}}</h2>
-    <p><a href="/phrases">Phrases</a></p>
-  </article>
-  <article>
-    <h2>{{.SentenceCount}}</h2>
-    <p><a href="/sentences">Sentences</a></p>
-  </article>
-  <article>
-    <h2>{{.ArticleCount}}</h2>
-    <p><a href="/articles">Articles</a></p>
-  </article>
-</div>
+<div class="dash-hero">
+  {{/* ── Left: Library counts ── */}}
+  <div class="dash-panel">
+    <h3>Library</h3>
+    <div class="dash-counts">
+      <div class="dash-count">
+        <a href="/words">
+          <span class="count-num">{{.WordCount}}</span>
+          <span class="count-label">Words</span>
+        </a>
+      </div>
+      <div class="dash-count">
+        <a href="/phrases">
+          <span class="count-num">{{.PhraseCount}}</span>
+          <span class="count-label">Phrases</span>
+        </a>
+      </div>
+      <div class="dash-count">
+        <a href="/sentences">
+          <span class="count-num">{{.SentenceCount}}</span>
+          <span class="count-label">Sentences</span>
+        </a>
+      </div>
+      <div class="dash-count">
+        <a href="/articles">
+          <span class="count-num">{{.ArticleCount}}</span>
+          <span class="count-label">Articles</span>
+        </a>
+      </div>
+      <div class="dash-count">
+        <a href="/compositions">
+          <span class="count-num">{{.CompositionCount}}</span>
+          <span class="count-label">Comps</span>
+        </a>
+      </div>
+    </div>
+  </div>
 
-<div class="grid">
-  <article>
-    <h2>{{.TagCount}}</h2>
-    <p>Tags</p>
-  </article>
-  <article>
-    <h2>{{.DueCount}}</h2>
-    <p><a href="/review">Due for Review</a></p>
-  </article>
+  {{/* ── Right: Review status ── */}}
+  <div class="dash-panel">
+    <h3>Review</h3>
+    <div class="dash-review-grid">
+      <a href="/review" style="text-decoration:none;color:inherit">
+        <div class="dash-review-item due">
+          <span class="rv-num">{{.DueCount}}</span>
+          <span class="rv-label">Due Now</span>
+        </div>
+      </a>
+      <div class="dash-review-item">
+        <span class="rv-num">{{.CurrentStreak}}<small style="font-size:0.45em;opacity:0.35"> / {{.LongestStreak}}</small></span>
+        <span class="rv-label">Streak (days)</span>
+      </div>
+      <div class="dash-review-item">
+        <span class="rv-num">{{.TodayCount}}<small style="font-size:0.45em;opacity:0.35"> / {{.DailyGoal}}</small></span>
+        <span class="rv-label">Today</span>
+      </div>
+    </div>
+    <div class="dash-today-bar-wrap">
+      <div class="dash-today-bar-fill" style="width:{{.TodayPct}}%"></div>
+    </div>
+    <div class="dash-actions">
+      <a href="/review" role="button" {{if le .DueCount 0}}class="secondary"{{end}}>Start Review</a>
+      <a href="/export" role="button" class="secondary">Export</a>
+    </div>
+  </div>
 </div>
 
 {{if .Tags}}
-<h3>Tags</h3>
+<div class="dash-section-title">Tags</div>
 <div class="tag-cloud">
-  {{range .Tags}}
-    <span class="tag">{{.Name}}</span>
-  {{end}}
+  {{range .Tags}}<span class="tag">{{.Name}}</span>{{end}}
 </div>
 {{end}}
 
-<div style="margin-top:2rem">
-  <a href="/review" role="button" class="secondary">Start Review</a>
-  <a href="/export" role="button" class="contrast">Export</a>
+<div hx-get="/stats/tags" hx-trigger="load" hx-swap="outerHTML">
+  <p style="opacity:0.5">Loading tag progress...</p>
 </div>
 {{end}}

@@ -5,77 +5,17 @@ import (
 	"os"
 	"strings"
 
-	"lingo/model"
+	"lingo/store"
 )
 
 // Stores holds references to all data stores and web starter.
 type Stores struct {
-	Words     WordOperations
-	Phrases   PhraseOperations
-	Sentences SentenceOperations
-	Articles  ArticleOperations
-	Tags      TagOperations
-	StartWeb  func(port string) // called by sd web
-}
-
-// WordOperations is the interface for word store operations needed by CLI.
-type WordOperations interface {
-	Add(model.Word) error
-	Get(idPrefix string) (*model.Word, error)
-	Update(model.Word) error
-	Delete(idPrefix string) error
-	Search(keywords []string, tags []string) ([]model.Word, error)
-	Count() (int, error)
-	GetAllTags() ([]string, error)
-	AllIDs() (map[string]string, error)
-	Load() ([]model.Word, error)
-	Save([]model.Word) error
-}
-
-// PhraseOperations is the interface for phrase store operations needed by CLI.
-type PhraseOperations interface {
-	Add(model.Phrase) error
-	Get(idPrefix string) (*model.Phrase, error)
-	Update(model.Phrase) error
-	Delete(idPrefix string) error
-	Search(keywords []string, tags []string) ([]model.Phrase, error)
-	Count() (int, error)
-	GetAllTags() ([]string, error)
-	Load() ([]model.Phrase, error)
-}
-
-// SentenceOperations is the interface for sentence store operations needed by CLI.
-type SentenceOperations interface {
-	Add(model.Sentence) error
-	Get(idPrefix string) (*model.Sentence, error)
-	Update(model.Sentence) error
-	Delete(idPrefix string) error
-	Search(keywords []string, tags []string) ([]model.Sentence, error)
-	Count() (int, error)
-	GetAllTags() ([]string, error)
-	Load() ([]model.Sentence, error)
-}
-
-// ArticleOperations is the interface for article store operations needed by CLI.
-type ArticleOperations interface {
-	Add(model.Article) error
-	Get(idPrefix string) (*model.Article, error)
-	Update(model.Article) error
-	Delete(idPrefix string) error
-	Search(keywords []string, tags []string) ([]model.Article, error)
-	Count() (int, error)
-	GetAllTags() ([]string, error)
-	Load() ([]model.Article, error)
-}
-
-// TagOperations is the interface for tag store operations needed by CLI.
-type TagOperations interface {
-	Add(model.Tag) error
-	Get(name string) (*model.Tag, error)
-	Delete(name string) error
-	Rename(oldName, newName string) error
-	Load() ([]model.Tag, error)
-	Save([]model.Tag) error
+	Words     store.WordStore
+	Phrases   store.PhraseStore
+	Sentences store.SentenceStore
+	Articles  store.ArticleStore
+	Tags      store.TagStore
+	StartWeb  func(port string) // called by lingo web
 }
 
 type cmd struct {

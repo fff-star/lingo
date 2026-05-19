@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"lingo/model"
 )
@@ -19,6 +18,7 @@ type ExtractedItems struct {
 	Phrases        []ExtractedPhrase   `json:"phrases"`
 	Sentences      []ExtractedSentence `json:"sentences"`
 	GrammarErrors  []ExtractedGrammar  `json:"grammar_errors"`
+	ModelEssay     string              `json:"model_essay"`
 }
 
 // ExtractedGrammar is a grammar error found by LLM analysis.
@@ -161,16 +161,7 @@ Limit: 3–8 sentences.
 
 // ProcessArticle sends article content to the LLM and returns extracted items.
 func ProcessArticle(cfg *Config, content, title string) (*ExtractedItems, error) {
-	// Enforce input length limit.
-	input := content
-	if utf8.RuneCountInString(input) > maxInputChars {
-		// Keep the first maxInputChars characters, but try to cut at a word boundary.
-		cut := input[:maxInputChars]
-		if idx := strings.LastIndexByte(cut, ' '); idx > 0 {
-			cut = cut[:idx]
-		}
-		input = cut
-	}
+	input := truncateRunes(content, maxInputChars)
 
 	userMsg := fmt.Sprintf("Title: %s\n\nContent:\n%s", title, input)
 
@@ -185,6 +176,19 @@ func ProcessArticle(cfg *Config, content, title string) (*ExtractedItems, error)
 	}
 
 	return parseResponse(resp)
+}
+
+// truncateRunes trims s to at most n runes, cutting at a word boundary.
+func truncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	cut := string(runes[:n])
+	if idx := strings.LastIndexByte(cut, ' '); idx > 0 {
+		cut = cut[:idx]
+	}
+	return cut
 }
 
 // ToAIAnalysis converts extracted items to a model.AIAnalysis for inline storage.
@@ -221,6 +225,7 @@ func (e *ExtractedItems) ToAIAnalysis() *model.AIAnalysis {
 			SuggestedTags: s.SuggestedTags,
 		})
 	}
+	analysis.ModelEssay = e.ModelEssay
 	for _, g := range e.GrammarErrors {
 		analysis.GrammarErrors = append(analysis.GrammarErrors, model.GrammarError{
 			Sentence:    g.Sentence,
@@ -269,6 +274,18 @@ For each error:
 - "error_type": one of "grammar" | "word_choice" | "collocation" | "tense" | "preposition" | "article" | "word_order" | "other"
 
 Only flag errors that clearly impact correctness or naturalness. Do NOT flag stylistic preferences or subjective improvements.
+
+## Model Essay (范文)
+
+Write a polished model version of the student's composition. Requirements:
+- Fix all grammar, wording, and collocation errors you identified
+- Preserve the student's original ideas, arguments, and structure
+- Elevate vocabulary and expressions where appropriate (use the words/phrases you suggested)
+- Improve sentence variety and flow
+- Keep the same approximate length (do NOT expand into a much longer essay)
+- Output as "model_essay": a single string with the full polished essay
+
+This is NOT a summary or commentary — it is the complete rewritten essay that the student can study as a reference.
 
 ## Word Selection
 
@@ -357,20 +374,14 @@ Limit: 2–6 sentences.
       "explanation": "中文解释：为什么是错误、如何改正",
       "error_type": "grammar"
     }
-  ]
+  ],
+  "model_essay": "完整的范文（英文）"
 }`
 
 // AnalyzeComposition analyzes a student's composition and returns feedback.
 // Unlike ProcessArticle, results are meant to be displayed inline, not added to stores.
 func AnalyzeComposition(cfg *Config, content, title string) (*ExtractedItems, error) {
-	input := content
-	if utf8.RuneCountInString(input) > maxInputChars {
-		cut := input[:maxInputChars]
-		if idx := strings.LastIndexByte(cut, ' '); idx > 0 {
-			cut = cut[:idx]
-		}
-		input = cut
-	}
+	input := truncateRunes(content, maxInputChars)
 
 	userMsg := fmt.Sprintf("Title: %s\n\nComposition:\n%s", title, input)
 

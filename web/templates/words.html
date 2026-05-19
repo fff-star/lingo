@@ -2,72 +2,36 @@
 {{if not .Htmx}}
 <h1>Words</h1>
 
-<div class="grid">
-  <form hx-get="/words" hx-target="#word-list" hx-trigger="input delay:300ms from:#word-search, change from:#word-tag">
-    <div class="grid">
-      <input id="word-search" name="q" type="search" placeholder="Search words..." value="{{.Query}}">
-      <select id="word-tag" name="tag">
-        <option value="">All tags</option>
-        {{range .AllTags}}
-          <option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>
-        {{end}}
-      </select>
-    </div>
+<div class="search-bar">
+  <form hx-get="/words" hx-target="#word-list" hx-trigger="change from:#word-tag, search from:#word-search delay:400ms" style="flex:1;display:flex;gap:0.5em">
+    <input id="word-search" name="q" type="search" placeholder="Search or look up a word..." value="{{.Query}}" data-fuzzy-target="#word-list tbody" style="flex:1">
+    <select id="word-tag" name="tag" style="width:150px">
+      <option value="">All tags</option>
+      {{range .AllTags}}
+        <option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>
+      {{end}}
+    </select>
   </form>
-  <button id="toggle-add" class="secondary" style="width:auto; white-space:nowrap" onclick="document.getElementById('add-form').toggleAttribute('hidden')">+ New Word</button>
 </div>
-
-<form id="add-form" hidden hx-post="/words/add" hx-target="#word-list" hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.elt === this && event.detail.successful) { this.reset(); this.toggleAttribute('hidden'); }">
-  <fieldset>
-    <legend>Add Word</legend>
-
-    <div style="display:flex; gap:0.5em; align-items:center; margin-bottom:1em">
-      <input name="word" id="add-word" placeholder="Word" required style="flex:1">
-      <button type="button" id="lookup-btn"
-              hx-get="/words/lookup" hx-target="#lookup-result" hx-swap="innerHTML"
-              hx-include="#add-word" hx-indicator="#lookup-spin">
-        Lookup
-      </button>
-      <span id="lookup-spin" class="htmx-indicator" style="white-space:nowrap">...</span>
-    </div>
-
-    <div id="lookup-result" style="font-size:0.85em; margin-bottom:0.5em; min-height:1em"></div>
-
-    <input name="phonetic" placeholder="Phonetic (e.g. /ˈhæpiː/)" id="add-phonetic">
-    <label>Definitions <small>(one per line: pos|meaning)</small>
-      <textarea name="definitions" rows="3" id="add-defs" placeholder="adj.|Having a feeling of well-being"></textarea>
-    </label>
-    <label>Examples <small>(one per line)</small>
-      <textarea name="examples" rows="2" id="add-examples" placeholder="Music makes me feel happy."></textarea>
-    </label>
-    <div class="grid">
-      <input name="tags" placeholder="Tags (comma-separated)">
-      <input name="notes" placeholder="Notes">
-    </div>
-    <button type="submit">Save</button>
-  </fieldset>
-</form>
 {{end}}
 
 <div id="word-list">
   {{if .Detail}}
     <div id="detail-view">
     <article>
-      <div class="grid">
+      <div class="detail-header">
         <h2>{{.Detail.Word}}</h2>
-        <div style="display:flex; gap:0.5em">
+        <div class="detail-actions">
           <button class="secondary" onclick="document.getElementById('detail-view').hidden=true;document.getElementById('edit-form').hidden=false">Edit</button>
           <button class="secondary"
                   hx-delete="/words/{{.Detail.ID}}"
                   hx-confirm="Delete '{{.Detail.Word}}'?"
-                  hx-target="body">
-            Delete
-          </button>
+                  hx-target="body">Delete</button>
         </div>
       </div>
-      {{if .Detail.Phonetic}}<p><code>{{.Detail.Phonetic}}</code></p>{{end}}
-      <p><small>ID: {{.Detail.ID}}</small></p>
+      {{if .Detail.Phonetic}}<p style="font-size:var(--m)"><code>{{.Detail.Phonetic}}</code>{{if .Detail.AudioURL}} <a href="#" onclick="new Audio('{{.Detail.AudioURL}}').play();return false" style="text-decoration:none">🔊</a>{{end}}</p>{{end}}
+      <p><small style="opacity:0.5">ID: {{.Detail.ID}}</small></p>
+
       {{if .Detail.Definitions}}
       <h4>Definitions</h4>
       <ul>
@@ -76,26 +40,26 @@
         {{end}}
       </ul>
       {{end}}
+
       {{if .Detail.Examples}}
       <h4>Examples</h4>
-      <ul>
-        {{range .Detail.Examples}}<li><em>{{.}}</em></li>{{end}}
-      </ul>
+      <ul>{{range .Detail.Examples}}<li><em>{{.}}</em></li>{{end}}</ul>
       {{end}}
+
       {{if .Detail.Inflections}}
       <h4>Inflections</h4>
-      <ul>
-        {{range .Detail.Inflections}}<li>{{.Form}}: {{.Value}}</li>{{end}}
-      </ul>
+      <ul>{{range .Detail.Inflections}}<li>{{.Form}}: {{.Value}}</li>{{end}}</ul>
       {{end}}
+
       {{if .Detail.Synonyms}}<p><strong>Synonyms:</strong> {{join .Detail.Synonyms ", "}}</p>{{end}}
       {{if .Detail.Advanced}}<p><strong>Advanced:</strong> {{join .Detail.Advanced ", "}}</p>{{end}}
-      {{if .Detail.Tags}}<p><strong>Tags:</strong> {{join .Detail.Tags ", "}}</p>{{end}}
+      {{if .Detail.Tags}}<p>{{range .Detail.Tags}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
+
       {{if .Detail.ReviewCount}}
-      <p>Reviewed {{.Detail.ReviewCount}} times · Stability: {{printf "%.1f" .Detail.Stability}}d · Difficulty: {{printf "%.1f" .Detail.Difficulty}}</p>
+      <p style="opacity:0.5;font-size:var(--xs);margin-top:1rem">Reviewed {{.Detail.ReviewCount}} times · Stability {{printf "%.1f" .Detail.Stability}}d · Difficulty {{printf "%.1f" .Detail.Difficulty}}</p>
       {{end}}
       {{if .Detail.Notes}}<p><strong>Notes:</strong> {{.Detail.Notes}}</p>{{end}}
-      <p><small>Created: {{.Detail.CreatedAt}}</small></p>
+      <p><small style="opacity:0.4">Created: {{.Detail.CreatedAt}}</small></p>
     </article>
     </div>
 
@@ -104,7 +68,8 @@
       <legend>Edit {{.Detail.Word}}</legend>
       <input name="word" value="{{.Detail.Word}}" required>
       <input name="phonetic" value="{{.Detail.Phonetic}}" placeholder="Phonetic">
-      <label>Definitions <small>(one per line: pos|meaning)</small>
+      <input type="hidden" name="audio_url" value="{{.Detail.AudioURL}}">
+      <label>Definitions <small>(pos|meaning, one per line)</small>
         <textarea name="definitions" rows="3">{{range .Detail.Definitions}}{{.Pos}}|{{.Meaning}}
 {{end}}</textarea>
       </label>
@@ -112,63 +77,73 @@
         <textarea name="examples" rows="2">{{range .Detail.Examples}}{{.}}
 {{end}}</textarea>
       </label>
-      <label>Synonyms <small>(comma-separated)</small>
-        <input name="synonyms" value="{{join .Detail.Synonyms ", "}}">
-      </label>
-      <label>Advanced <small>(comma-separated)</small>
-        <input name="advanced" value="{{join .Detail.Advanced ", "}}">
-      </label>
-      <div class="grid">
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <input name="synonyms" value="{{join .Detail.Synonyms ", "}}" placeholder="Synonyms">
+        <input name="advanced" value="{{join .Detail.Advanced ", "}}" placeholder="Advanced">
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
         <input name="tags" value="{{join .Detail.Tags ", "}}" placeholder="Tags">
         <input name="notes" value="{{.Detail.Notes}}" placeholder="Notes">
       </div>
-      <div style="display:flex; gap:0.5em">
+      <div style="display:flex;gap:0.5em">
         <button type="submit">Save</button>
         <button type="button" class="secondary" onclick="document.getElementById('edit-form').hidden=true;document.getElementById('detail-view').hidden=false">Cancel</button>
       </div>
     </fieldset>
     </form>
 
-    <p><a href="/words">← Back to words</a></p>
+    <p><a href="/words">← Back</a></p>
+
+  {{else if .LookupWord}}
+    {{/* ── API lookup result (word not in library) ── */}}
+    <article>
+      <div class="detail-header">
+        <h2>{{.LookupWord.Word}}</h2>
+        <div class="detail-actions">
+          <button hx-post="/words/quick-add"
+                  hx-vals='{"word":"{{.LookupWord.Word}}"}'
+                  hx-swap="none">
+            + Add
+          </button>
+        </div>
+      </div>
+      {{if .LookupWord.Phonetic}}<p style="font-size:var(--m)"><code>{{.LookupWord.Phonetic}}</code>{{if .LookupWord.AudioURL}} <a href="#" onclick="new Audio('{{.LookupWord.AudioURL}}').play();return false" style="text-decoration:none">🔊</a>{{end}}</p>{{end}}
+      {{if .LookupWord.Definitions}}
+      <h4>Definitions</h4>
+      <ul>
+        {{range .LookupWord.Definitions}}
+        <li><strong>{{.Pos}}</strong> {{.Meaning}}</li>
+        {{end}}
+      </ul>
+      {{end}}
+      {{if .LookupWord.Examples}}
+      <h4>Examples</h4>
+      <ul>{{range .LookupWord.Examples}}<li><em>{{.}}</em></li>{{end}}</ul>
+      {{end}}
+      {{if .LookupWord.Inflections}}
+      <h4>Inflections</h4>
+      <ul>{{range .LookupWord.Inflections}}<li>{{.Form}}: {{.Value}}</li>{{end}}</ul>
+      {{end}}
+      <p style="opacity:0.5;margin-top:1rem"><small>Not in your vocabulary. Click <strong>+ Add</strong> to save it.</small></p>
+    </article>
+
   {{else}}
-    <table class="striped">
+    {{if .Query}}
+    <p style="opacity:0.5;margin-bottom:1rem">No results for "<strong>{{.Query}}</strong>"</p>
+    {{end}}
+    <table>
       <thead><tr><th>Word</th><th>Tags</th><th>Definition</th></tr></thead>
       <tbody>
       {{range .Words}}
-      <tr>
+      <tr data-search="{{range .Synonyms}}{{.}} {{end}}{{range .Advanced}}{{.}} {{end}}{{range .Examples}}{{.}} {{end}}">
         <td><a href="/words/{{.ID}}">{{.Word}}</a></td>
         <td>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</td>
-        <td>{{if .Definitions}}{{(index .Definitions 0).Meaning}}{{end}}</td>
+        <td style="opacity:0.6">{{if .Definitions}}{{(index .Definitions 0).Meaning}}{{end}}</td>
       </tr>
       {{end}}
       </tbody>
     </table>
-    <p><small>{{len .Words}} words</small></p>
+    <p><small id="word-list-count" style="opacity:0.4">{{len .Words}} words</small></p>
   {{end}}
 </div>
-
-{{if not .Htmx}}
-<script>
-document.body.addEventListener('htmx:afterSwap', function(evt) {
-  var target = evt.detail.target;
-  if (target.id !== 'lookup-result') return;
-  try {
-    var info = JSON.parse(target.textContent);
-    if (info.error) { target.textContent = 'Not found'; return; }
-    document.getElementById('add-phonetic').value = info.Phonetic || '';
-    var defs = '';
-    if (info.Definitions) {
-      defs = info.Definitions.map(function(d) { return (d.pos||'') + '|' + d.meaning; }).join('\n');
-    }
-    document.getElementById('add-defs').value = defs;
-    var exs = '';
-    if (info.Examples) {
-      exs = info.Examples.join('\n');
-    }
-    document.getElementById('add-examples').value = exs;
-    target.textContent = 'Found: ' + info.Word;
-  } catch(e) {}
-});
-</script>
-{{end}}
 {{end}}

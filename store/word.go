@@ -8,38 +8,36 @@ import (
 	"lingo/model"
 )
 
-type WordStore struct {
+type jsonWordStore struct {
 	mu       sync.RWMutex
 	filePath string
+	data     []model.Word
 }
 
-func NewWordStore(filePath string) *WordStore {
-	return &WordStore{filePath: filePath}
+func NewJSONWordStore(filePath string) *jsonWordStore {
+	return &jsonWordStore{filePath: filePath}
 }
 
-func (s *WordStore) Load() ([]model.Word, error) {
+func (s *jsonWordStore) Load() ([]model.Word, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var words []model.Word
-	if err := readJSON(s.filePath, &words); err != nil {
-		return nil, err
-	}
-	if words == nil {
-		words = []model.Word{}
-	}
-	return words, nil
+	return s.loadUnsafe()
 }
 
-func (s *WordStore) Save(words []model.Word) error {
+func (s *jsonWordStore) Save(words []model.Word) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if words == nil {
 		words = []model.Word{}
 	}
-	return writeJSON(s.filePath, words)
+	if err := writeJSON(s.filePath, words); err != nil {
+		return err
+	}
+	s.data = words
+	return nil
 }
 
-func (s *WordStore) Add(w model.Word) error {
+func (s *jsonWordStore) Add(w model.Word) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	words, err := s.loadUnsafe()
@@ -55,10 +53,14 @@ func (s *WordStore) Add(w model.Word) error {
 		}
 	}
 	words = append(words, w)
-	return writeJSON(s.filePath, words)
+	if err := writeJSON(s.filePath, words); err != nil {
+		return err
+	}
+	s.data = words
+	return nil
 }
 
-func (s *WordStore) Get(idPrefix string) (*model.Word, error) {
+func (s *jsonWordStore) Get(idPrefix string) (*model.Word, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	words, err := s.loadUnsafe()
@@ -73,7 +75,7 @@ func (s *WordStore) Get(idPrefix string) (*model.Word, error) {
 	return nil, ErrNotFound
 }
 
-func (s *WordStore) Update(w model.Word) error {
+func (s *jsonWordStore) Update(w model.Word) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	words, err := s.loadUnsafe()
@@ -83,13 +85,17 @@ func (s *WordStore) Update(w model.Word) error {
 	for i := range words {
 		if words[i].ID == w.ID {
 			words[i] = w
-			return writeJSON(s.filePath, words)
+			if err := writeJSON(s.filePath, words); err != nil {
+				return err
+			}
+			s.data = words
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *WordStore) Delete(idPrefix string) error {
+func (s *jsonWordStore) Delete(idPrefix string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	words, err := s.loadUnsafe()
@@ -99,13 +105,17 @@ func (s *WordStore) Delete(idPrefix string) error {
 	for i := range words {
 		if strings.HasPrefix(words[i].ID, idPrefix) || strings.EqualFold(words[i].Word, idPrefix) {
 			words = append(words[:i], words[i+1:]...)
-			return writeJSON(s.filePath, words)
+			if err := writeJSON(s.filePath, words); err != nil {
+				return err
+			}
+			s.data = words
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *WordStore) Search(keywords []string, tags []string) ([]model.Word, error) {
+func (s *jsonWordStore) Search(keywords []string, tags []string) ([]model.Word, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	words, err := s.loadUnsafe()
@@ -114,7 +124,7 @@ func (s *WordStore) Search(keywords []string, tags []string) ([]model.Word, erro
 	}
 	var result []model.Word
 	for _, w := range words {
-		if !matchAnyTag(w.Tags, tags) {
+		if !MatchAnyTag(w.Tags, tags) {
 			continue
 		}
 		if len(keywords) == 0 {
@@ -132,7 +142,7 @@ func (s *WordStore) Search(keywords []string, tags []string) ([]model.Word, erro
 	return result, nil
 }
 
-func (s *WordStore) AllIDs() (map[string]string, error) {
+func (s *jsonWordStore) AllIDs() (map[string]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	words, err := s.loadUnsafe()
@@ -146,7 +156,7 @@ func (s *WordStore) AllIDs() (map[string]string, error) {
 	return m, nil
 }
 
-func (s *WordStore) GetAllTags() ([]string, error) {
+func (s *jsonWordStore) GetAllTags() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	words, err := s.loadUnsafe()
@@ -167,7 +177,7 @@ func (s *WordStore) GetAllTags() ([]string, error) {
 	return tags, nil
 }
 
-func (s *WordStore) Count() (int, error) {
+func (s *jsonWordStore) Count() (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	words, err := s.loadUnsafe()
@@ -177,7 +187,12 @@ func (s *WordStore) Count() (int, error) {
 	return len(words), nil
 }
 
-func (s *WordStore) loadUnsafe() ([]model.Word, error) {
+func (s *jsonWordStore) loadUnsafe() ([]model.Word, error) {
+	if s.data != nil {
+		out := make([]model.Word, len(s.data))
+		copy(out, s.data)
+		return out, nil
+	}
 	var words []model.Word
 	if err := readJSON(s.filePath, &words); err != nil {
 		return nil, err
@@ -185,5 +200,6 @@ func (s *WordStore) loadUnsafe() ([]model.Word, error) {
 	if words == nil {
 		words = []model.Word{}
 	}
-	return words, nil
+	s.data = words
+	return s.data, nil
 }

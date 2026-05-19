@@ -2,42 +2,32 @@
 {{if not .Htmx}}
 <h1>Phrases</h1>
 
-<div class="grid">
-  <form hx-get="/phrases" hx-target="#phrase-list" hx-trigger="input delay:300ms from:#phrase-search, change from:#phrase-tag">
-    <div class="grid">
-      <input id="phrase-search" name="q" type="search" placeholder="Search phrases..." value="{{.Query}}">
-      <select id="phrase-tag" name="tag">
-        <option value="">All tags</option>
-        {{range .AllTags}}
-          <option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>
-        {{end}}
-      </select>
-    </div>
+<div class="search-bar">
+  <form hx-get="/phrases" hx-target="#phrase-list" hx-trigger="change from:#phrase-tag" style="flex:1;display:flex;gap:0.5em">
+    <input id="phrase-search" name="q" type="search" placeholder="Search..." value="{{.Query}}" data-fuzzy-target="#phrase-list tbody" style="flex:1">
+    <select id="phrase-tag" name="tag" style="width:140px">
+      <option value="">All tags</option>
+      {{range .AllTags}}<option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
   </form>
-  <button id="toggle-add" class="secondary" style="width:auto; white-space:nowrap" onclick="document.getElementById('add-form').toggleAttribute('hidden')">+ New Phrase</button>
+  <button class="secondary" onclick="document.getElementById('add-form').toggleAttribute('hidden')">+ New</button>
 </div>
 
 <form id="add-form" hidden hx-post="/phrases/add" hx-target="#phrase-list" hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.elt === this && event.detail.successful) { this.reset(); this.toggleAttribute('hidden'); }">
+      hx-on::after-request="if(event.detail.successful) { this.reset(); this.toggleAttribute('hidden'); }">
   <fieldset>
     <legend>Add Phrase</legend>
     <input name="phrase" placeholder="Phrase" required>
-    <select name="type">
-      <option value="other">other</option>
-      <option value="phrasal_verb">phrasal verb</option>
-      <option value="idiom">idiom</option>
-      <option value="collocation">collocation</option>
-      <option value="connective">connective</option>
-    </select>
-    <input name="words" placeholder="Words (space-separated)">
-    <label>Definition
-      <textarea name="definition" rows="2" placeholder="Definition in Chinese"></textarea>
-    </label>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <input name="type" placeholder="Type (idiom, phrasal verb...)">
+      <input name="words" placeholder="Words">
+    </div>
+    <input name="definition" placeholder="Definition">
     <label>Examples <small>(one per line)</small>
-      <textarea name="examples" rows="2" placeholder="Example sentences..."></textarea>
+      <textarea name="examples" rows="2"></textarea>
     </label>
-    <div class="grid">
-      <input name="tags" placeholder="Tags (comma-separated)">
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <input name="tags" placeholder="Tags">
       <input name="notes" placeholder="Notes">
     </div>
     <button type="submit">Save</button>
@@ -47,90 +37,71 @@
 
 <div id="phrase-list">
   {{if .Detail}}
-    <div id="detail-view">
-    <article>
-      <div class="grid">
+    <div id="detail-view"><article>
+      <div class="detail-header">
         <h2>{{.Detail.Phrase}}</h2>
-        <div style="display:flex; gap:0.5em">
+        <div class="detail-actions">
           <button class="secondary" onclick="document.getElementById('detail-view').hidden=true;document.getElementById('edit-form').hidden=false">Edit</button>
-          <button class="secondary"
-                  hx-delete="/phrases/{{.Detail.ID}}"
-                  hx-confirm="Delete '{{.Detail.Phrase}}'?"
-                  hx-target="body">
-            Delete
-          </button>
+          <button class="secondary" hx-delete="/phrases/{{.Detail.ID}}" hx-confirm="Delete?" hx-target="body">Delete</button>
         </div>
       </div>
-      <p><small>Type: {{.Detail.Type}} · ID: {{.Detail.ID}}</small></p>
-      {{if .Detail.Definition}}<p><strong>{{.Detail.Definition}}</strong></p>{{end}}
-      {{if .Detail.Examples}}
-      <h4>Examples</h4>
-      <ul>{{range .Detail.Examples}}<li><em>{{.}}</em></li>{{end}}</ul>
-      {{end}}
+      {{if .Detail.Type}}<p><span class="tag">{{.Detail.Type}}</span></p>{{end}}
+      <p><small style="opacity:0.5">ID: {{.Detail.ID}}</small></p>
       {{if .Detail.Words}}<p><strong>Words:</strong> {{join .Detail.Words ", "}}</p>{{end}}
+      {{if .Detail.Definition}}<p>{{.Detail.Definition}}</p>{{end}}
+      {{if .Detail.Examples}}<h4>Examples</h4><ul>{{range .Detail.Examples}}<li><em>{{.}}</em></li>{{end}}</ul>{{end}}
       {{if .Detail.Synonyms}}<p><strong>Synonyms:</strong> {{join .Detail.Synonyms ", "}}</p>{{end}}
       {{if .Detail.Advanced}}<p><strong>Advanced:</strong> {{join .Detail.Advanced ", "}}</p>{{end}}
-      {{if .Detail.Tags}}<p><strong>Tags:</strong> {{join .Detail.Tags ", "}}</p>{{end}}
-      {{if .Detail.ReviewCount}}
-      <p>Reviewed {{.Detail.ReviewCount}} times · Stability: {{printf "%.1f" .Detail.Stability}}d</p>
-      {{end}}
+      {{if .Detail.Tags}}<p>{{range .Detail.Tags}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
+      {{if .Detail.ReviewCount}}<p style="opacity:0.5;font-size:var(--xs)">Reviewed {{.Detail.ReviewCount}} times · Stability {{printf "%.1f" .Detail.Stability}}d</p>{{end}}
       {{if .Detail.Notes}}<p><strong>Notes:</strong> {{.Detail.Notes}}</p>{{end}}
-      <p><small>Created: {{.Detail.CreatedAt}}</small></p>
-    </article>
-    </div>
+      <p><small style="opacity:0.4">Created: {{.Detail.CreatedAt}}</small></p>
+    </article></div>
 
     <form id="edit-form" hidden hx-put="/phrases/{{.Detail.ID}}" hx-target="#phrase-list" hx-swap="innerHTML">
     <fieldset>
-      <legend>Edit {{.Detail.Phrase}}</legend>
+      <legend>Edit</legend>
       <input name="phrase" value="{{.Detail.Phrase}}" required>
-      <select name="type">
-        <option value="other" {{if eq .Detail.Type "other"}}selected{{end}}>other</option>
-        <option value="phrasal_verb" {{if eq .Detail.Type "phrasal_verb"}}selected{{end}}>phrasal verb</option>
-        <option value="idiom" {{if eq .Detail.Type "idiom"}}selected{{end}}>idiom</option>
-        <option value="collocation" {{if eq .Detail.Type "collocation"}}selected{{end}}>collocation</option>
-        <option value="connective" {{if eq .Detail.Type "connective"}}selected{{end}}>connective</option>
-      </select>
-      <input name="words" value="{{join .Detail.Words " "}}" placeholder="Words">
-      <label>Definition
-        <textarea name="definition" rows="2">{{.Detail.Definition}}</textarea>
-      </label>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <input name="type" value="{{.Detail.Type}}" placeholder="Type">
+        <input name="words" value="{{join .Detail.Words ", "}}" placeholder="Words">
+      </div>
+      <input name="definition" value="{{.Detail.Definition}}" placeholder="Definition">
       <label>Examples <small>(one per line)</small>
         <textarea name="examples" rows="2">{{range .Detail.Examples}}{{.}}
 {{end}}</textarea>
       </label>
-      <label>Synonyms <small>(comma-separated)</small>
-        <input name="synonyms" value="{{join .Detail.Synonyms ", "}}">
-      </label>
-      <label>Advanced <small>(comma-separated)</small>
-        <input name="advanced" value="{{join .Detail.Advanced ", "}}">
-      </label>
-      <div class="grid">
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <input name="synonyms" value="{{join .Detail.Synonyms ", "}}" placeholder="Synonyms">
+        <input name="advanced" value="{{join .Detail.Advanced ", "}}" placeholder="Advanced">
+      </div>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
         <input name="tags" value="{{join .Detail.Tags ", "}}" placeholder="Tags">
         <input name="notes" value="{{.Detail.Notes}}" placeholder="Notes">
       </div>
-      <div style="display:flex; gap:0.5em">
+      <div style="display:flex;gap:0.5em">
         <button type="submit">Save</button>
         <button type="button" class="secondary" onclick="document.getElementById('edit-form').hidden=true;document.getElementById('detail-view').hidden=false">Cancel</button>
       </div>
     </fieldset>
     </form>
 
-    <p><a href="/phrases">← Back to phrases</a></p>
+    <p><a href="/phrases">← Back</a></p>
   {{else}}
-    <table class="striped">
+    <table>
       <thead><tr><th>Phrase</th><th>Type</th><th>Tags</th><th>Definition</th></tr></thead>
       <tbody>
       {{range .Phrases}}
-      <tr>
+      <tr data-search="{{range .Synonyms}}{{.}} {{end}}{{range .Advanced}}{{.}} {{end}}">
         <td><a href="/phrases/{{.ID}}">{{.Phrase}}</a></td>
-        <td>{{.Type}}</td>
+        <td><span class="tag">{{.Type}}</span></td>
         <td>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</td>
-        <td>{{.Definition}}</td>
+        <td style="opacity:0.6">{{.Definition}}</td>
       </tr>
       {{end}}
       </tbody>
     </table>
-    <p><small>{{len .Phrases}} phrases</small></p>
+    <p><small style="opacity:0.4">{{len .Phrases}} phrases</small></p>
   {{end}}
 </div>
 {{end}}

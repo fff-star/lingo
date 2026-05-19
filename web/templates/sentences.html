@@ -2,38 +2,29 @@
 {{if not .Htmx}}
 <h1>Sentences</h1>
 
-<div class="grid">
-  <form hx-get="/sentences" hx-target="#sentence-list" hx-trigger="input delay:300ms from:#sent-search, change from:#sent-tag">
-    <div class="grid">
-      <input id="sent-search" name="q" type="search" placeholder="Search sentences..." value="{{.Query}}">
-      <select id="sent-tag" name="tag">
-        <option value="">All tags</option>
-        {{range .AllTags}}
-          <option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>
-        {{end}}
-      </select>
-    </div>
+<div class="search-bar">
+  <form hx-get="/sentences" hx-target="#sent-list" hx-trigger="change from:#sent-tag" style="flex:1;display:flex;gap:0.5em">
+    <input id="sent-search" name="q" type="search" placeholder="Search..." value="{{.Query}}" data-fuzzy-target="#sent-list tbody" style="flex:1">
+    <select id="sent-tag" name="tag" style="width:140px">
+      <option value="">All tags</option>
+      {{range .AllTags}}<option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
   </form>
-  <button id="toggle-add" class="secondary" style="width:auto; white-space:nowrap" onclick="document.getElementById('add-form').toggleAttribute('hidden')">+ New Sentence</button>
+  <button class="secondary" onclick="document.getElementById('add-form').toggleAttribute('hidden')">+ New</button>
 </div>
 
-<form id="add-form" hidden hx-post="/sentences/add" hx-target="#sentence-list" hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.elt === this && event.detail.successful) { this.reset(); this.toggleAttribute('hidden'); }">
+<form id="add-form" hidden hx-post="/sentences/add" hx-target="#sent-list" hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { this.reset(); this.toggleAttribute('hidden'); }">
   <fieldset>
     <legend>Add Sentence</legend>
-    <label>Sentence text
-      <textarea name="text" rows="2" required placeholder="The sentence..."></textarea>
-    </label>
-    <div class="grid">
-      <input name="source" placeholder="Source (e.g. The Economist)">
+    <input name="text" placeholder="Sentence text" required>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <input name="source" placeholder="Source">
       <input name="author" placeholder="Author">
     </div>
-    <input name="source_url" placeholder="Source URL">
-    <label>Translation
-      <input name="translation" placeholder="Chinese translation">
-    </label>
-    <div class="grid">
-      <input name="tags" placeholder="Tags (comma-separated)">
+    <input name="translation" placeholder="Translation">
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <input name="tags" placeholder="Tags">
       <input name="notes" placeholder="Notes">
     </div>
     <button type="submit">Save</button>
@@ -41,74 +32,61 @@
 </form>
 {{end}}
 
-<div id="sentence-list">
+<div id="sent-list">
   {{if .Detail}}
-    <div id="detail-view">
-    <article>
-      <div class="grid">
-        <h2>Sentence</h2>
-        <div style="display:flex; gap:0.5em">
+    <div id="detail-view"><article>
+      <div class="detail-header">
+        <h2>{{.Detail.Text}}</h2>
+        <div class="detail-actions">
           <button class="secondary" onclick="document.getElementById('detail-view').hidden=true;document.getElementById('edit-form').hidden=false">Edit</button>
-          <button class="secondary"
-                  hx-delete="/sentences/{{.Detail.ID}}"
-                  hx-confirm="Delete this sentence?"
-                  hx-target="body">
-            Delete
-          </button>
+          <button class="secondary" hx-delete="/sentences/{{.Detail.ID}}" hx-confirm="Delete?" hx-target="body">Delete</button>
         </div>
       </div>
-      <p><small>ID: {{.Detail.ID}}</small></p>
-      <blockquote>{{.Detail.Text}}</blockquote>
-      {{if .Detail.Translation}}<p>译：{{.Detail.Translation}}</p>{{end}}
-      <p><small>Source: {{.Detail.Source}}{{if .Detail.Author}} ({{.Detail.Author}}){{end}}</small></p>
-      {{if .Detail.SourceURL}}<p><a href="{{.Detail.SourceURL}}">Source link</a></p>{{end}}
-      {{if .Detail.Tags}}<p><strong>Tags:</strong> {{join .Detail.Tags ", "}}</p>{{end}}
+      <p><small style="opacity:0.5">ID: {{.Detail.ID}}{{if .Detail.Source}} · {{.Detail.Source}}{{end}}{{if .Detail.Author}} · {{.Detail.Author}}{{end}}</small></p>
+      {{if .Detail.SourceURL}}<p><a href="{{.Detail.SourceURL}}">→ Source</a></p>{{end}}
+      {{if .Detail.Translation}}<p style="opacity:0.7">{{.Detail.Translation}}</p>{{end}}
+      {{if .Detail.Tags}}<p>{{range .Detail.Tags}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
       {{if .Detail.Notes}}<p><strong>Notes:</strong> {{.Detail.Notes}}</p>{{end}}
-      <p><small>Created: {{.Detail.CreatedAt}}</small></p>
-    </article>
-    </div>
+      <p><small style="opacity:0.4">Created: {{.Detail.CreatedAt}}</small></p>
+    </article></div>
 
-    <form id="edit-form" hidden hx-put="/sentences/{{.Detail.ID}}" hx-target="#sentence-list" hx-swap="innerHTML">
+    <form id="edit-form" hidden hx-put="/sentences/{{.Detail.ID}}" hx-target="#sent-list" hx-swap="innerHTML">
     <fieldset>
-      <legend>Edit Sentence</legend>
-      <label>Sentence text
-        <textarea name="text" rows="2" required>{{.Detail.Text}}</textarea>
-      </label>
-      <div class="grid">
+      <legend>Edit</legend>
+      <input name="text" value="{{.Detail.Text}}" required>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
         <input name="source" value="{{.Detail.Source}}" placeholder="Source">
         <input name="author" value="{{.Detail.Author}}" placeholder="Author">
       </div>
       <input name="source_url" value="{{.Detail.SourceURL}}" placeholder="Source URL">
-      <label>Translation
-        <input name="translation" value="{{.Detail.Translation}}" placeholder="Chinese translation">
-      </label>
-      <div class="grid">
+      <input name="translation" value="{{.Detail.Translation}}" placeholder="Translation">
+      <div class="grid" style="grid-template-columns:1fr 1fr">
         <input name="tags" value="{{join .Detail.Tags ", "}}" placeholder="Tags">
         <input name="notes" value="{{.Detail.Notes}}" placeholder="Notes">
       </div>
-      <div style="display:flex; gap:0.5em">
+      <div style="display:flex;gap:0.5em">
         <button type="submit">Save</button>
         <button type="button" class="secondary" onclick="document.getElementById('edit-form').hidden=true;document.getElementById('detail-view').hidden=false">Cancel</button>
       </div>
     </fieldset>
     </form>
 
-    <p><a href="/sentences">← Back to sentences</a></p>
+    <p><a href="/sentences">← Back</a></p>
   {{else}}
-    <table class="striped">
-      <thead><tr><th>ID</th><th>Text</th><th>Tags</th><th>Source</th></tr></thead>
+    <table>
+      <thead><tr><th>Text</th><th>Source</th><th>Tags</th><th>Translation</th></tr></thead>
       <tbody>
       {{range .Sentences}}
-      <tr>
-        <td><a href="/sentences/{{.ID}}">{{.ID}}</a></td>
-        <td>{{.Text}}</td>
+      <tr data-search="{{.Translation}}">
+        <td><a href="/sentences/{{.ID}}">{{.Text}}</a></td>
+        <td style="opacity:0.6">{{.Source}}</td>
         <td>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</td>
-        <td>{{.Source}}</td>
+        <td style="opacity:0.6">{{.Translation}}</td>
       </tr>
       {{end}}
       </tbody>
     </table>
-    <p><small>{{len .Sentences}} sentences</small></p>
+    <p><small style="opacity:0.4">{{len .Sentences}} sentences</small></p>
   {{end}}
 </div>
 {{end}}

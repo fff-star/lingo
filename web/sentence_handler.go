@@ -60,6 +60,63 @@ func (s *Server) handleSentenceDetail(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleSentenceBatch(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", 400)
+		return
+	}
+	action := r.FormValue("action")
+	tagName := strings.TrimSpace(r.FormValue("tag"))
+	idsRaw := r.FormValue("ids")
+	var ids []string
+	for _, id := range strings.Split(idsRaw, ",") {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 || tagName == "" {
+		http.Error(w, "ids and tag are required", 400)
+		return
+	}
+	sentences, _ := s.Sentences.Load()
+	for i := range sentences {
+		st := &sentences[i]
+		if !store.HasString(ids, st.ID) {
+			continue
+		}
+		switch action {
+		case "tag":
+			if store.HasString(st.Tags, tagName) {
+				continue
+			}
+			st.Tags = append(st.Tags, tagName)
+		case "untag":
+			if !store.HasString(st.Tags, tagName) {
+				continue
+			}
+			st.Tags = store.RemoveString(st.Tags, tagName)
+		default:
+			http.Error(w, "unknown action: "+action, 400)
+			return
+		}
+		st.UpdatedAt = time.Now().UTC()
+		if err := s.Sentences.Update(*st); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	}
+	allSentences, _ := s.Sentences.Search(nil, nil)
+	allTags, _ := s.Sentences.GetAllTags()
+	isHtmx := r.Header.Get("HX-Request") == "true"
+	s.render(w, r, "sentences.html", map[string]interface{}{
+		"Title":     "Sentences",
+		"Sentences": allSentences,
+		"AllTags":   allTags,
+		"Htmx":      isHtmx,
+	})
+}
+
 func (s *Server) handleSentenceAdd(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", 400)

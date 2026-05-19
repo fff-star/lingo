@@ -21,32 +21,3 @@ func TestAppendIfNew(t *testing.T) {
 		t.Errorf("len after dup = %d, want 2", len(items))
 	}
 }
-
-func TestHasPOS(t *testing.T) {
-	info := &WordInfo{
-		Definitions: []model.Definition{
-			{Pos: "verb", Meaning: "to move"},
-			{Pos: "noun", Meaning: "a movement"},
-		},
-	}
-
-	if !hasPOS(info, "verb") {
-		t.Error("should have verb")
-	}
-	if !hasPOS(info, "noun") {
-		t.Error("should have noun")
-	}
-	if hasPOS(info, "adjective") {
-		t.Error("should not have adjective")
-	}
-}
-
-func TestVerbFormTypes(t *testing.T) {
-	// Ensure all expected verb form types are registered.
-	expected := []string{"past tense", "past participle", "present participle", "3rd person singular"}
-	for _, ft := range expected {
-		if !verbFormTypes[ft] {
-			t.Errorf("verbFormTypes missing %q", ft)
-		}
-	}
-}

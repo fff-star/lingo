@@ -8,38 +8,36 @@ import (
 	"lingo/model"
 )
 
-type ArticleStore struct {
+type jsonArticleStore struct {
 	mu       sync.RWMutex
 	filePath string
+	data     []model.Article
 }
 
-func NewArticleStore(filePath string) *ArticleStore {
-	return &ArticleStore{filePath: filePath}
+func NewJSONArticleStore(filePath string) *jsonArticleStore {
+	return &jsonArticleStore{filePath: filePath}
 }
 
-func (s *ArticleStore) Load() ([]model.Article, error) {
+func (s *jsonArticleStore) Load() ([]model.Article, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var items []model.Article
-	if err := readJSON(s.filePath, &items); err != nil {
-		return nil, err
-	}
-	if items == nil {
-		items = []model.Article{}
-	}
-	return items, nil
+	return s.loadUnsafe()
 }
 
-func (s *ArticleStore) Save(items []model.Article) error {
+func (s *jsonArticleStore) Save(items []model.Article) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if items == nil {
 		items = []model.Article{}
 	}
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *ArticleStore) Add(a model.Article) error {
+func (s *jsonArticleStore) Add(a model.Article) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -52,10 +50,14 @@ func (s *ArticleStore) Add(a model.Article) error {
 		}
 	}
 	items = append(items, a)
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *ArticleStore) Get(idPrefix string) (*model.Article, error) {
+func (s *jsonArticleStore) Get(idPrefix string) (*model.Article, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -70,7 +72,7 @@ func (s *ArticleStore) Get(idPrefix string) (*model.Article, error) {
 	return nil, ErrNotFound
 }
 
-func (s *ArticleStore) Update(a model.Article) error {
+func (s *jsonArticleStore) Update(a model.Article) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -80,13 +82,17 @@ func (s *ArticleStore) Update(a model.Article) error {
 	for i := range items {
 		if items[i].ID == a.ID {
 			items[i] = a
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *ArticleStore) Delete(idPrefix string) error {
+func (s *jsonArticleStore) Delete(idPrefix string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -96,13 +102,17 @@ func (s *ArticleStore) Delete(idPrefix string) error {
 	for i := range items {
 		if strings.HasPrefix(items[i].ID, idPrefix) {
 			items = append(items[:i], items[i+1:]...)
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *ArticleStore) Search(keywords []string, tags []string) ([]model.Article, error) {
+func (s *jsonArticleStore) Search(keywords []string, tags []string) ([]model.Article, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -111,7 +121,7 @@ func (s *ArticleStore) Search(keywords []string, tags []string) ([]model.Article
 	}
 	var result []model.Article
 	for _, a := range items {
-		if !matchAnyTag(a.Tags, tags) {
+		if !MatchAnyTag(a.Tags, tags) {
 			continue
 		}
 		if len(keywords) == 0 {
@@ -126,7 +136,7 @@ func (s *ArticleStore) Search(keywords []string, tags []string) ([]model.Article
 	return result, nil
 }
 
-func (s *ArticleStore) GetAllTags() ([]string, error) {
+func (s *jsonArticleStore) GetAllTags() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -147,7 +157,7 @@ func (s *ArticleStore) GetAllTags() ([]string, error) {
 	return tags, nil
 }
 
-func (s *ArticleStore) Count() (int, error) {
+func (s *jsonArticleStore) Count() (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -157,7 +167,12 @@ func (s *ArticleStore) Count() (int, error) {
 	return len(items), nil
 }
 
-func (s *ArticleStore) loadUnsafe() ([]model.Article, error) {
+func (s *jsonArticleStore) loadUnsafe() ([]model.Article, error) {
+	if s.data != nil {
+		out := make([]model.Article, len(s.data))
+		copy(out, s.data)
+		return out, nil
+	}
 	var items []model.Article
 	if err := readJSON(s.filePath, &items); err != nil {
 		return nil, err
@@ -165,5 +180,6 @@ func (s *ArticleStore) loadUnsafe() ([]model.Article, error) {
 	if items == nil {
 		items = []model.Article{}
 	}
-	return items, nil
+	s.data = items
+	return s.data, nil
 }

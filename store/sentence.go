@@ -8,38 +8,36 @@ import (
 	"lingo/model"
 )
 
-type SentenceStore struct {
+type jsonSentenceStore struct {
 	mu       sync.RWMutex
 	filePath string
+	data     []model.Sentence
 }
 
-func NewSentenceStore(filePath string) *SentenceStore {
-	return &SentenceStore{filePath: filePath}
+func NewJSONSentenceStore(filePath string) *jsonSentenceStore {
+	return &jsonSentenceStore{filePath: filePath}
 }
 
-func (s *SentenceStore) Load() ([]model.Sentence, error) {
+func (s *jsonSentenceStore) Load() ([]model.Sentence, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var items []model.Sentence
-	if err := readJSON(s.filePath, &items); err != nil {
-		return nil, err
-	}
-	if items == nil {
-		items = []model.Sentence{}
-	}
-	return items, nil
+	return s.loadUnsafe()
 }
 
-func (s *SentenceStore) Save(items []model.Sentence) error {
+func (s *jsonSentenceStore) Save(items []model.Sentence) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if items == nil {
 		items = []model.Sentence{}
 	}
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *SentenceStore) Add(st model.Sentence) error {
+func (s *jsonSentenceStore) Add(st model.Sentence) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -52,10 +50,14 @@ func (s *SentenceStore) Add(st model.Sentence) error {
 		}
 	}
 	items = append(items, st)
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *SentenceStore) Get(idPrefix string) (*model.Sentence, error) {
+func (s *jsonSentenceStore) Get(idPrefix string) (*model.Sentence, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -70,7 +72,7 @@ func (s *SentenceStore) Get(idPrefix string) (*model.Sentence, error) {
 	return nil, ErrNotFound
 }
 
-func (s *SentenceStore) Update(st model.Sentence) error {
+func (s *jsonSentenceStore) Update(st model.Sentence) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -80,13 +82,17 @@ func (s *SentenceStore) Update(st model.Sentence) error {
 	for i := range items {
 		if items[i].ID == st.ID {
 			items[i] = st
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *SentenceStore) Delete(idPrefix string) error {
+func (s *jsonSentenceStore) Delete(idPrefix string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -96,13 +102,17 @@ func (s *SentenceStore) Delete(idPrefix string) error {
 	for i := range items {
 		if strings.HasPrefix(items[i].ID, idPrefix) {
 			items = append(items[:i], items[i+1:]...)
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *SentenceStore) Search(keywords []string, tags []string) ([]model.Sentence, error) {
+func (s *jsonSentenceStore) Search(keywords []string, tags []string) ([]model.Sentence, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -111,7 +121,7 @@ func (s *SentenceStore) Search(keywords []string, tags []string) ([]model.Senten
 	}
 	var result []model.Sentence
 	for _, st := range items {
-		if !matchAnyTag(st.Tags, tags) {
+		if !MatchAnyTag(st.Tags, tags) {
 			continue
 		}
 		if len(keywords) == 0 {
@@ -126,7 +136,7 @@ func (s *SentenceStore) Search(keywords []string, tags []string) ([]model.Senten
 	return result, nil
 }
 
-func (s *SentenceStore) GetAllTags() ([]string, error) {
+func (s *jsonSentenceStore) GetAllTags() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -147,7 +157,7 @@ func (s *SentenceStore) GetAllTags() ([]string, error) {
 	return tags, nil
 }
 
-func (s *SentenceStore) Count() (int, error) {
+func (s *jsonSentenceStore) Count() (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -157,7 +167,12 @@ func (s *SentenceStore) Count() (int, error) {
 	return len(items), nil
 }
 
-func (s *SentenceStore) loadUnsafe() ([]model.Sentence, error) {
+func (s *jsonSentenceStore) loadUnsafe() ([]model.Sentence, error) {
+	if s.data != nil {
+		out := make([]model.Sentence, len(s.data))
+		copy(out, s.data)
+		return out, nil
+	}
 	var items []model.Sentence
 	if err := readJSON(s.filePath, &items); err != nil {
 		return nil, err
@@ -165,5 +180,6 @@ func (s *SentenceStore) loadUnsafe() ([]model.Sentence, error) {
 	if items == nil {
 		items = []model.Sentence{}
 	}
-	return items, nil
+	s.data = items
+	return s.data, nil
 }

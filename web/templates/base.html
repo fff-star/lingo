@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} — Lingo</title>
-<link rel="stylesheet" href="/static/pico.min.css" onerror="var l=document.createElement('link');l.rel='stylesheet';l.href='https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css';document.head.appendChild(l)">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+<link rel="stylesheet" href="/static/pico.min.css">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/htmx.min.js"></script>
-<script>if(typeof htmx==='undefined'){var s=document.createElement('script');s.src='https://unpkg.com/htmx.org@2.0.4';document.head.appendChild(s)}</script>
-<script src="/static/marked.min.js" onerror="var s=document.createElement('script');s.src='https://unpkg.com/marked@14.1.3/marked.min.js';document.head.appendChild(s)"></script>
+<script src="/static/marked.min.js"></script>
 </head>
 <body>
 <nav class="container-fluid">
@@ -22,6 +22,9 @@
     <li><a href="/review">Review</a></li>
     <li><a href="/export">Export</a></li>
   </ul>
+  <ul>
+    <li><a href="#" id="theme-toggle" title="Toggle dark mode" onclick="toggleTheme();return false">🌓</a></li>
+  </ul>
 </nav>
 
 <main class="container">
@@ -31,23 +34,226 @@
 <footer class="container">
   <small>Lingo — personal language material manager</small>
 </footer>
+
 <script>
+/* ── Markdown rendering ── */
 function renderMarkdown() {
   document.querySelectorAll('.markdown-body').forEach(el => {
     if (el.dataset.rendered) return
-    if (typeof marked === 'undefined') return // fallback: raw text with pre-wrap
+    if (typeof marked === 'undefined') return
     try {
-      const md = el.textContent
-      el.innerHTML = marked.parse(md, { breaks: true, gfm: true })
+      el.innerHTML = marked.parse(el.textContent, { breaks: true, gfm: true })
       el.style.whiteSpace = 'normal'
       el.dataset.rendered = '1'
-    } catch (e) {
-      // parse error — keep raw text as fallback
-    }
+    } catch (e) {}
   })
 }
 document.addEventListener('DOMContentLoaded', renderMarkdown)
 document.addEventListener('htmx:afterSettle', renderMarkdown)
+
+/* ── AI Processing via SSE ── */
+function processWithAI(url) {
+  const btn = document.getElementById('process-btn')
+  const status = document.getElementById('process-status')
+  if (btn) btn.disabled = true
+  status.innerHTML = '<span style="opacity:0.6">Connecting to LLM...</span>'
+
+  const es = new EventSource(url)
+  es.addEventListener('progress', e => {
+    document.getElementById('process-msg').textContent = e.data
+  })
+  es.addEventListener('done', e => { es.close(); window.location = e.data })
+  es.addEventListener('error', e => {
+    es.close()
+    const msg = e.data || 'Connection lost. The process may still be running.'
+    status.innerHTML = '<span style="color:#e74c3c">' + msg + '</span>'
+  })
+}
+
+/* ── Inline word lookup ── */
+let wordPopover = null
+function hideWordPopover() { if (wordPopover) { wordPopover.remove(); wordPopover = null } }
+
+function quickAddWord(word, popover) {
+  fetch('/words/quick-add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({word: word})
+  }).then(r => r.json()).then(res => {
+    if (res.success) {
+      popover.innerHTML = '<strong>' + word + '</strong><br><small>Added. <a href="/words/' + res.id + '">View</a></small>'
+    } else if (res.error === 'already exists') {
+      popover.innerHTML = '<strong>' + word + '</strong><br><small>Already in vocabulary. <a href="/words/' + res.id + '">View</a></small>'
+    } else {
+      popover.innerHTML = '<strong>' + word + '</strong><br><small style="color:#e74c3c">' + res.error + '</small>'
+    }
+  })
+}
+
+function buildPopoverInfo(word, info) {
+  let html = '<strong>' + (info.word || word) + '</strong>'
+  if (info.phonetic) html += ' <small style="opacity:0.5">' + info.phonetic + '</small>'
+  if (info.defs && info.defs.length) {
+    html += '<br>' + info.defs.map(d => '<span class="tag" style="margin:1px">' + d + '</span>').join(' ')
+  }
+  if (info.found) {
+    html += '<br><small><a href="/words/' + info.id + '">View detail</a></small>'
+  } else {
+    html += '<br><small>Not in vocabulary · <a href="#" class="quick-add-link">+ Add</a></small>'
+  }
+  return html
+}
+
+document.addEventListener('click', function(e) {
+  const el = e.target.closest('.word-clickable')
+  if (!el) { hideWordPopover(); return }
+  if (el.closest('.word-popover')) return
+
+  const raw = el.textContent.trim()
+  const word = raw.replace(/^[^\w]+|[^\w]+$/g, '')
+  if (!word || word.length < 2) return
+
+  hideWordPopover()
+
+  fetch('/words/check?q=' + encodeURIComponent(word))
+    .then(r => r.json())
+    .then(info => {
+      wordPopover = document.createElement('div')
+      wordPopover.className = 'word-popover'
+      wordPopover.innerHTML = buildPopoverInfo(word, info)
+
+      const addLink = wordPopover.querySelector('.quick-add-link')
+      if (addLink) {
+        addLink.addEventListener('click', function(ev) {
+          ev.preventDefault()
+          quickAddWord(info.word || word, wordPopover)
+        })
+      }
+      document.body.appendChild(wordPopover)
+
+      const rect = el.getBoundingClientRect()
+      const top = rect.bottom + window.scrollY + 4
+      const left = Math.min(rect.left + window.scrollX, window.innerWidth - 290)
+      wordPopover.style.top = top + 'px'
+      wordPopover.style.left = left + 'px'
+    })
+})
+
+/* ── Wrap words in markdown as clickable ── */
+function wrapClickableWords() {
+  document.querySelectorAll('.markdown-body').forEach(body => {
+    if (body.dataset.wordsWrapped) return
+    body.dataset.wordsWrapped = '1'
+    if (body.querySelector('.word-clickable')) return
+
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false)
+    const textNodes = []
+    while (walker.nextNode()) textNodes.push(walker.currentNode)
+
+    textNodes.forEach(node => {
+      if (node.parentElement.closest('a,code,pre,blockquote,.word-clickable')) return
+      const text = node.textContent
+      if (!text.trim()) return
+      const parts = text.split(/(\s+)/)
+      const frag = document.createDocumentFragment()
+      parts.forEach(part => {
+        if (/^\s+$/.test(part) || !part) {
+          frag.appendChild(document.createTextNode(part))
+        } else {
+          const cleaned = part.replace(/^[^\w]+|[^\w]+$/g, '')
+          if (cleaned.length >= 2 && /^[a-zA-Z]/.test(cleaned)) {
+            const span = document.createElement('span')
+            span.className = 'word-clickable'
+            span.textContent = part
+            frag.appendChild(span)
+          } else {
+            frag.appendChild(document.createTextNode(part))
+          }
+        }
+      })
+      node.parentNode.replaceChild(frag, node)
+    })
+  })
+}
+document.addEventListener('DOMContentLoaded', wrapClickableWords)
+document.addEventListener('htmx:afterSettle', wrapClickableWords)
+
+/* ── Dark mode ── */
+function toggleTheme() {
+  const html = document.documentElement
+  const next = html.dataset.theme === 'dark' ? 'light' : 'dark'
+  html.dataset.theme = next
+  localStorage.setItem('theme', next)
+}
+;(function() {
+  const saved = localStorage.getItem('theme')
+  if (saved) document.documentElement.dataset.theme = saved
+})()
+
+/* ── Review keyboard shortcuts ── */
+document.addEventListener('keydown', function(e) {
+  if (e.target.closest('input,textarea,select')) return
+  if (e.key >= '1' && e.key <= '4') {
+    const btns = document.querySelectorAll('.review-card .rating-buttons button')
+    if (btns.length === 4) btns[parseInt(e.key) - 1].click()
+  }
+  if (e.key === 'Enter') {
+    const showBtn = document.querySelector('.review-card button[id^="show-"]')
+    if (showBtn && !showBtn.hidden) showBtn.click()
+  }
+})
+
+/* ── Client-side fuzzy filter ── */
+function fuzzyMatch(query, text) {
+  if (!query) return true
+  query = query.toLowerCase()
+  text = text.toLowerCase()
+  let qi = 0
+  for (let i = 0; i < text.length && qi < query.length; i++) {
+    if (text[i] === query[qi]) qi++
+  }
+  return qi === query.length
+}
+
+function applyFuzzyFilter(inp) {
+  const target = document.querySelector(inp.dataset.fuzzyTarget)
+  if (!target) return
+  const query = inp.value.trim()
+  inp.dataset.fuzzyQuery = query
+
+  if (inp._filterTimer) clearTimeout(inp._filterTimer)
+  inp._filterTimer = setTimeout(function() {
+    inp._filterTimer = null
+    const rows = target.querySelectorAll('tbody tr')
+    let visible = 0
+    requestAnimationFrame(function() {
+      rows.forEach(row => {
+        let haystack = row.textContent
+        const extra = row.getAttribute('data-search')
+        if (extra) haystack += ' ' + extra
+        if (fuzzyMatch(query, haystack)) {
+          row.style.display = ''
+          visible++
+        } else {
+          row.style.display = 'none'
+        }
+      })
+      const counter = document.getElementById(inp.dataset.fuzzyTarget.replace('#','') + '-count')
+      if (counter) counter.textContent = visible + ' items'
+    })
+  }, 16)
+}
+
+document.addEventListener('input', function(e) {
+  const inp = e.target.closest('input[data-fuzzy-target]')
+  if (inp) applyFuzzyFilter(inp)
+})
+
+document.addEventListener('htmx:afterSwap', function(e) {
+  document.querySelectorAll('input[data-fuzzy-target]').forEach(function(inp) {
+    if (inp.dataset.fuzzyQuery) applyFuzzyFilter(inp)
+  })
+})
 </script>
 </body>
 </html>

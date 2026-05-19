@@ -12,12 +12,9 @@ func init() {
 func runSearch(args []string) error {
 	typeFilter := ""
 	var keywords []string
-	fzf := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--fzf":
-			fzf = true
 		case "--type":
 			if i+1 < len(args) {
 				typeFilter = args[i+1]
@@ -32,8 +29,8 @@ func runSearch(args []string) error {
 		}
 	}
 
-	if fzf {
-		return searchFzf(typeFilter)
+	if len(keywords) == 0 {
+		return fuzzySearch(typeFilter)
 	}
 
 	var count int
@@ -101,9 +98,8 @@ func runSearch(args []string) error {
 	return nil
 }
 
-func searchFzf(typeFilter string) error {
-	// Build lines for fzf: [type] id | text | tags
-	var lines []string
+func fuzzySearch(typeFilter string) error {
+	var items []fuzzyItem
 
 	if typeFilter == "" || typeFilter == "word" {
 		words, _ := wordStore.Search(nil, nil)
@@ -112,36 +108,83 @@ func searchFzf(typeFilter string) error {
 			if len(w.Definitions) > 0 {
 				def = w.Definitions[0].Meaning
 			}
-			lines = append(lines, fmt.Sprintf("[W]\t%s\t%s\t%s", w.Word, strings.Join(w.Tags, ","), def))
+			items = append(items, fuzzyItem{
+				Type:   "[W]",
+				ID:     w.ID,
+				Text:   w.Word,
+				Detail: def,
+				Tags:   strings.Join(w.Tags, ","),
+			})
 		}
 	}
 	if typeFilter == "" || typeFilter == "phrase" {
 		phrases, _ := phraseStore.Search(nil, nil)
 		for _, p := range phrases {
-			lines = append(lines, fmt.Sprintf("[P]\t%s\t%s\t%s", p.Phrase, strings.Join(p.Tags, ","), p.Definition))
+			items = append(items, fuzzyItem{
+				Type:   "[P]",
+				ID:     p.ID,
+				Text:   p.Phrase,
+				Detail: p.Definition,
+				Tags:   strings.Join(p.Tags, ","),
+			})
 		}
 	}
 	if typeFilter == "" || typeFilter == "sent" || typeFilter == "sentence" {
 		sentences, _ := sentenceStore.Search(nil, nil)
 		for _, s := range sentences {
-			text := s.Text
-			if len(text) > 60 {
-				text = text[:57] + "..."
+			detail := s.Translation
+			if detail == "" {
+				detail = s.Source
 			}
-			lines = append(lines, fmt.Sprintf("[S]\t%s\t%s\t%s", s.ID, strings.Join(s.Tags, ","), text))
+			items = append(items, fuzzyItem{
+				Type:   "[S]",
+				ID:     s.ID,
+				Text:   s.Text,
+				Detail: detail,
+				Tags:   strings.Join(s.Tags, ","),
+			})
 		}
 	}
 	if typeFilter == "" || typeFilter == "article" {
 		articles, _ := articleStore.Search(nil, nil)
 		for _, a := range articles {
-			lines = append(lines, fmt.Sprintf("[A]\t%s\t%s\t%s", a.ID, strings.Join(a.Tags, ","), a.Title))
+			items = append(items, fuzzyItem{
+				Type:   "[A]",
+				ID:     a.ID,
+				Text:   a.Title,
+				Detail: a.Source,
+				Tags:   strings.Join(a.Tags, ","),
+			})
 		}
 	}
 
-	if len(lines) == 0 {
+	if len(items) == 0 {
 		fmt.Println("No items.")
 		return nil
 	}
 
-	return runFzf(lines)
+	selected, err := fuzzyPicker(items)
+	if err != nil {
+		return err
+	}
+	if selected == nil {
+		return nil
+	}
+
+	printDetail(selected.Type, selected.ID)
+	return nil
+}
+
+func printDetail(typ, id string) {
+	fmt.Println()
+	switch typ {
+	case "[W]":
+		wordShow(id)
+	case "[P]":
+		phraseShow(id)
+	case "[S]":
+		sentenceShow(id)
+	case "[A]":
+		articleShow(id)
+	}
 }

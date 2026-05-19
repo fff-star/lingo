@@ -16,6 +16,7 @@ const apiURL = "https://api.dictionaryapi.dev/api/v2/entries/en/"
 type WordInfo struct {
 	Word        string
 	Phonetic    string
+	AudioURL    string
 	Definitions []model.Definition
 	Examples    []string
 	Inflections []model.Inflection
@@ -57,13 +58,16 @@ func Lookup(word string) (*WordInfo, error) {
 			if info.Phonetic == "" && p.Text != "" {
 				info.Phonetic = p.Text
 			}
+			if info.AudioURL == "" && p.Audio != "" {
+				info.AudioURL = p.Audio
+			}
 		}
 
 		for _, m := range entry.Meanings {
 			for _, d := range m.Definitions {
 				def := model.Definition{Pos: m.PartOfSpeech, Meaning: d.Definition}
 				info.Definitions = append(info.Definitions, def)
-				if d.Example != "" {
+				if d.Example != "" && len(info.Examples) < 5 {
 					info.Examples = append(info.Examples, d.Example)
 				}
 				// Collect synonyms from the meaning level.
@@ -72,11 +76,6 @@ func Lookup(word string) (*WordInfo, error) {
 				}
 			}
 		}
-	}
-
-	// Limit examples to 5.
-	if len(info.Examples) > 5 {
-		info.Examples = info.Examples[:5]
 	}
 
 	if info.Phonetic != "" && !strings.HasPrefix(info.Phonetic, "/") {
@@ -94,7 +93,8 @@ type dictEntry struct {
 }
 
 type phonetic struct {
-	Text string `json:"text"`
+	Text  string `json:"text"`
+	Audio string `json:"audio"`
 }
 
 type meaning struct {
@@ -117,45 +117,3 @@ func appendIfNew(items []model.Inflection, item model.Inflection) []model.Inflec
 	return append(items, item)
 }
 
-// VerbFormTypes lists inflection types that require verb definitions.
-var verbFormTypes = map[string]bool{
-	"past tense":          true,
-	"past participle":     true,
-	"present participle":  true,
-	"3rd person singular": true,
-}
-
-// VerifyInflection checks that a candidate inflected form is semantically consistent
-// with the claimed inflection type by looking it up and checking part-of-speech.
-// Returns true only if the API confirms the word AND its POS matches the form type.
-func VerifyInflection(baseWord, formValue, formType string) bool {
-	info, err := Lookup(formValue)
-	if err != nil {
-		return false
-	}
-
-	if verbFormTypes[formType] {
-		return hasPOS(info, "verb")
-	}
-	if formType == "plural" {
-		return hasPOS(info, "noun")
-	}
-	if formType == "comparative" || formType == "superlative" {
-		return hasPOS(info, "adjective") || hasPOS(info, "adverb")
-	}
-
-		if formType == "adverb" {
-		return hasPOS(info, "adverb")
-		}
-
-	return true
-}
-
-func hasPOS(info *WordInfo, target string) bool {
-	for _, d := range info.Definitions {
-		if d.Pos == target {
-			return true
-		}
-	}
-	return false
-}

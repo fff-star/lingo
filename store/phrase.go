@@ -8,38 +8,36 @@ import (
 	"lingo/model"
 )
 
-type PhraseStore struct {
+type jsonPhraseStore struct {
 	mu       sync.RWMutex
 	filePath string
+	data     []model.Phrase
 }
 
-func NewPhraseStore(filePath string) *PhraseStore {
-	return &PhraseStore{filePath: filePath}
+func NewJSONPhraseStore(filePath string) *jsonPhraseStore {
+	return &jsonPhraseStore{filePath: filePath}
 }
 
-func (s *PhraseStore) Load() ([]model.Phrase, error) {
+func (s *jsonPhraseStore) Load() ([]model.Phrase, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var items []model.Phrase
-	if err := readJSON(s.filePath, &items); err != nil {
-		return nil, err
-	}
-	if items == nil {
-		items = []model.Phrase{}
-	}
-	return items, nil
+	return s.loadUnsafe()
 }
 
-func (s *PhraseStore) Save(items []model.Phrase) error {
+func (s *jsonPhraseStore) Save(items []model.Phrase) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if items == nil {
 		items = []model.Phrase{}
 	}
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *PhraseStore) Add(p model.Phrase) error {
+func (s *jsonPhraseStore) Add(p model.Phrase) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -55,10 +53,14 @@ func (s *PhraseStore) Add(p model.Phrase) error {
 		}
 	}
 	items = append(items, p)
-	return writeJSON(s.filePath, items)
+	if err := writeJSON(s.filePath, items); err != nil {
+		return err
+	}
+	s.data = items
+	return nil
 }
 
-func (s *PhraseStore) Get(idPrefix string) (*model.Phrase, error) {
+func (s *jsonPhraseStore) Get(idPrefix string) (*model.Phrase, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -73,7 +75,7 @@ func (s *PhraseStore) Get(idPrefix string) (*model.Phrase, error) {
 	return nil, ErrNotFound
 }
 
-func (s *PhraseStore) Update(p model.Phrase) error {
+func (s *jsonPhraseStore) Update(p model.Phrase) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -83,13 +85,17 @@ func (s *PhraseStore) Update(p model.Phrase) error {
 	for i := range items {
 		if items[i].ID == p.ID {
 			items[i] = p
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *PhraseStore) Delete(idPrefix string) error {
+func (s *jsonPhraseStore) Delete(idPrefix string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := s.loadUnsafe()
@@ -99,13 +105,17 @@ func (s *PhraseStore) Delete(idPrefix string) error {
 	for i := range items {
 		if strings.HasPrefix(items[i].ID, idPrefix) || strings.EqualFold(items[i].Phrase, idPrefix) {
 			items = append(items[:i], items[i+1:]...)
-			return writeJSON(s.filePath, items)
+			if err := writeJSON(s.filePath, items); err != nil {
+				return err
+			}
+			s.data = items
+			return nil
 		}
 	}
 	return ErrNotFound
 }
 
-func (s *PhraseStore) Search(keywords []string, tags []string) ([]model.Phrase, error) {
+func (s *jsonPhraseStore) Search(keywords []string, tags []string) ([]model.Phrase, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -114,7 +124,7 @@ func (s *PhraseStore) Search(keywords []string, tags []string) ([]model.Phrase, 
 	}
 	var result []model.Phrase
 	for _, p := range items {
-		if !matchAnyTag(p.Tags, tags) {
+		if !MatchAnyTag(p.Tags, tags) {
 			continue
 		}
 		if len(keywords) == 0 {
@@ -130,7 +140,7 @@ func (s *PhraseStore) Search(keywords []string, tags []string) ([]model.Phrase, 
 	return result, nil
 }
 
-func (s *PhraseStore) GetAllTags() ([]string, error) {
+func (s *jsonPhraseStore) GetAllTags() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -151,7 +161,7 @@ func (s *PhraseStore) GetAllTags() ([]string, error) {
 	return tags, nil
 }
 
-func (s *PhraseStore) Count() (int, error) {
+func (s *jsonPhraseStore) Count() (int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	items, err := s.loadUnsafe()
@@ -161,7 +171,12 @@ func (s *PhraseStore) Count() (int, error) {
 	return len(items), nil
 }
 
-func (s *PhraseStore) loadUnsafe() ([]model.Phrase, error) {
+func (s *jsonPhraseStore) loadUnsafe() ([]model.Phrase, error) {
+	if s.data != nil {
+		out := make([]model.Phrase, len(s.data))
+		copy(out, s.data)
+		return out, nil
+	}
 	var items []model.Phrase
 	if err := readJSON(s.filePath, &items); err != nil {
 		return nil, err
@@ -169,5 +184,6 @@ func (s *PhraseStore) loadUnsafe() ([]model.Phrase, error) {
 	if items == nil {
 		items = []model.Phrase{}
 	}
-	return items, nil
+	s.data = items
+	return s.data, nil
 }

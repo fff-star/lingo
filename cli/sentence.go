@@ -11,9 +11,9 @@ import (
 	"lingo/store"
 )
 
-var sentenceStore *store.SentenceStore
+var sentenceStore store.SentenceStore
 
-func InitSentence(s *store.SentenceStore) {
+func InitSentence(s store.SentenceStore) {
 	sentenceStore = s
 }
 

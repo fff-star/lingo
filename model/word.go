@@ -16,6 +16,7 @@ type Word struct {
 	ID             string       `json:"id"`
 	Word           string       `json:"word"`
 	Phonetic       string       `json:"phonetic"`
+	AudioURL       string       `json:"audio_url,omitempty"`
 	Definitions    []Definition `json:"definitions"`
 	Examples       []string     `json:"examples"`
 	Inflections    []Inflection `json:"inflections"`

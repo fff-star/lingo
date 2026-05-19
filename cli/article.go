@@ -12,9 +12,9 @@ import (
 	"lingo/store"
 )
 
-var articleStore *store.ArticleStore
+var articleStore store.ArticleStore
 
-func InitArticle(as *store.ArticleStore) {
+func InitArticle(as store.ArticleStore) {
 	articleStore = as
 }
 

@@ -1,111 +1,393 @@
-/* Sentense Dictionary custom styles */
+/* Lingo */
 
-.tag {
-  display: inline-block;
-  padding: 0.1em 0.5em;
-  margin: 0.1em;
-  background: var(--pico-primary-background);
-  color: var(--pico-primary-inverse);
-  border-radius: 4px;
-  font-size: 0.85em;
+:root {
+  --l: 0.78em;
+  --m: 0.88em;
+  --s: 0.76em;
+  --xs: 0.7em;
+  --gap: 1.6rem;
+  --radius: 7px;
+  --transition: 0.2s ease;
 }
 
-.tag-cloud {
+[data-theme] {
+  transition: background-color 0.4s, color 0.4s;
+}
+
+body {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: var(--m);
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+}
+
+/* ── Nav ── */
+nav.container-fluid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25em;
-}
-
-.review-done {
-  text-align: center;
-  padding: 3rem 1rem;
-}
-
-.review-card {
-  max-width: 600px;
-  margin: 2rem auto;
-  padding: 2rem;
-  border: 2px solid var(--pico-primary);
-  border-radius: 12px;
-}
-
-.review-card .front {
-  font-size: 1.5rem;
-  font-weight: bold;
-  text-align: center;
-  padding: 2rem 0;
-}
-
-.review-card .back {
+  justify-content: space-between;
+  align-items: center;
   padding: 1rem 0;
-  border-top: 1px solid var(--pico-muted-border-color);
+  margin-bottom: 2.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+nav ul {
+  display: flex; gap: 1.25rem; list-style: none; margin: 0; padding: 0; align-items: center;
+}
+nav a {
+  text-decoration: none;
+  font-size: var(--m);
+  font-weight: 460;
+  color: var(--pico-muted-color);
+  transition: color var(--transition);
+}
+nav a:hover { color: var(--pico-color); }
+nav strong a {
+  font-size: 1.1rem; font-weight: 600; color: var(--pico-color); letter-spacing: -0.02em;
 }
 
-.review-card .rating-buttons {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-  margin-top: 1rem;
-}
+/* ── Headings ── */
+h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 1.5rem; letter-spacing: -0.02em; }
+h2 { font-size: 1.15rem; font-weight: 550; margin: 0; }
+h3 { font-size: 1rem; font-weight: 550; margin: 1.5rem 0 0.75rem; }
+h4 { font-size: 0.9rem; font-weight: 550; margin: 1rem 0 0.5rem; }
 
-.review-card .rating-buttons button {
-  min-width: 80px;
-}
+p { margin: 0 0 0.75rem; }
 
-table.striped td {
-  vertical-align: middle;
-}
-
-.htmx-indicator {
-  display: none;
-}
-
-.htmx-request .htmx-indicator,
-.htmx-indicator.htmx-request {
-  display: inline;
-}
-
-@media (max-width: 768px) {
-  .review-card {
-    margin: 1rem;
-    padding: 1rem;
-  }
-}
-
-.markdown-body code {
-  background: var(--pico-code-background);
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-size: 0.9em;
-}
-
-.markdown-body pre {
-  background: var(--pico-code-background);
-  padding: 1em;
-  border-radius: 6px;
-  overflow-x: auto;
-}
-
-.markdown-body pre code {
-  background: none;
-  padding: 0;
-}
-
-.markdown-body table {
-  width: 100%;
-  margin-bottom: 1em;
-}
-
-.markdown-body table th,
-.markdown-body table td {
-  padding: 0.5em;
+/* ── Cards ── */
+article {
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 0.75rem;
+  border-radius: var(--radius);
+  background: var(--pico-card-background-color);
   border: 1px solid var(--pico-muted-border-color);
 }
 
-.markdown-body table th {
+/* ── Grid ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: var(--gap);
+}
+
+/* ── Buttons ── */
+button, [role="button"], a[role="button"] {
+  font-size: var(--s);
+  padding: 0.35em 0.9em;
+  border-radius: 5px;
+  font-weight: 450;
+  letter-spacing: 0;
+  transition: all var(--transition);
+}
+button.secondary, [role="button"].secondary { opacity: 0.7; }
+button.secondary:hover, [role="button"].secondary:hover { opacity: 1; }
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  font-size: var(--m);
+  border-collapse: collapse;
+}
+table thead th {
+  font-size: var(--xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pico-muted-color);
+  padding: 0.45rem 0.65rem;
+  border-bottom: 2px solid var(--pico-muted-border-color);
+  background: none;
+}
+table tbody td {
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  vertical-align: middle;
+}
+table tbody tr:hover { background: var(--pico-table-row-striped-background); }
+
+/* ── Tags ── */
+.tag {
+  display: inline-block;
+  padding: 0.1em 0.45em; margin: 0.1em;
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+  border-radius: 3px;
+  font-size: var(--xs);
+  font-weight: 450;
+}
+.tag-cloud {
+  display: flex; flex-wrap: wrap; gap: 0.3em; margin-bottom: var(--gap);
+}
+
+/* ── Forms ── */
+input, select, textarea {
+  font-size: var(--m);
+  padding: 0.4em 0.6em;
+  border-radius: 5px;
+  border: 1px solid var(--pico-muted-border-color);
+  background: var(--pico-background-color);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--pico-primary); outline: none;
+}
+fieldset {
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.15rem;
+  margin-bottom: var(--gap);
+}
+legend {
+  font-size: var(--s); font-weight: 550; padding: 0 0.5rem;
+}
+label {
+  font-size: var(--s); margin-bottom: 0.5rem; display: block;
+}
+label small { color: var(--pico-muted-color); font-weight: 400; }
+
+/* ── Dashboard ── */
+.dash-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.dash-panel {
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--radius);
+  background: var(--pico-card-background-color);
+  padding: 1.25rem 1.5rem;
+}
+
+.dash-panel h3 {
+  margin: 0 0 1rem;
+  font-size: var(--xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--pico-muted-color);
+  font-weight: 500;
+}
+
+.dash-counts {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.6rem;
+}
+
+.dash-count {
+  text-align: center;
+}
+
+.dash-count .count-num {
+  display: block;
+  font-size: 1.65rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.dash-count .count-label {
+  display: block;
+  font-size: var(--xs);
+  color: var(--pico-muted-color);
+  margin-top: 0.2rem;
+}
+
+.dash-count a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.dash-count a:hover .count-num {
+  color: var(--pico-primary);
+}
+
+/* Review panel in dashboard */
+.dash-review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.dash-review-item {
+  text-align: center;
+  padding: 0.35rem 0;
+}
+
+.dash-review-item .rv-num {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.dash-review-item .rv-label {
+  display: block;
+  font-size: var(--xs);
+  color: var(--pico-muted-color);
+  margin-top: 0.15rem;
+}
+
+/* Due badge */
+.dash-review-item.due .rv-num {
+  color: #c0392b;
+}
+[data-theme="dark"] .dash-review-item.due .rv-num {
+  color: #e74c3c;
+}
+
+/* Today progress bar */
+.dash-today-bar-wrap {
+  margin-top: 0.75rem;
+  height: 4px;
+  background: var(--pico-muted-border-color);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.dash-today-bar-fill {
+  height: 100%;
+  background: var(--pico-primary);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+/* Tags section */
+.dash-section-title {
+  font-size: var(--xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--pico-muted-color);
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.dash-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Review card ── */
+.review-card {
+  max-width: 540px;
+  margin: 2.5rem auto;
+  padding: 2rem 2.5rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--radius);
+  background: var(--pico-card-background-color);
+}
+.review-card .front {
+  font-size: 1.3rem;
+  font-weight: 550;
+  text-align: center;
+  padding: 2rem 0 1.5rem;
+  letter-spacing: -0.01em;
+}
+.review-card .back {
+  padding: 1.25rem 0 0;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+.review-card .rating-buttons {
+  display: flex; gap: 0.5rem; justify-content: center; margin-top: 1.25rem; flex-wrap: wrap;
+}
+.review-card .rating-buttons button {
+  min-width: 68px; font-size: var(--s); padding: 0.4em 0.75em;
+}
+.review-done {
+  text-align: center; padding: 3rem 1rem;
+}
+.review-done h2 { margin-bottom: 0.5rem; }
+
+/* ── Word popover ── */
+.word-clickable {
+  cursor: pointer;
+  border-bottom: 1px dotted var(--pico-muted-color);
+  transition: background 0.15s;
+}
+.word-clickable:hover {
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+}
+.word-popover {
+  position: absolute;
+  z-index: 1000;
+  background: var(--pico-card-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  max-width: 280px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  font-size: var(--s);
+  line-height: 1.5;
+}
+
+/* ── Markdown ── */
+.markdown-body { line-height: 1.7; }
+.markdown-body pre {
+  padding: 1rem; border-radius: var(--radius); overflow-x: auto; font-size: var(--s);
+}
+.markdown-body code { padding: 0.15em 0.35em; border-radius: 3px; font-size: var(--s); }
+.markdown-body pre code { padding: 0; }
+.markdown-body table { width: 100%; margin-bottom: 1em; }
+.markdown-body img { max-width: 100%; border-radius: var(--radius); }
+
+/* ── AI analysis blocks ── */
+.ai-block {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 2px solid var(--pico-primary);
+  border-radius: 0 var(--radius) var(--radius) 0;
   background: var(--pico-table-row-striped-background);
 }
 
-.markdown-body img {
-  max-width: 100%;
+/* ── Footer ── */
+footer.container {
+  padding: 1.5rem 0; margin-top: 3rem;
+  border-top: 1px solid var(--pico-muted-border-color);
+  font-size: var(--m); color: var(--pico-muted-color);
+}
+
+/* ── Detail header ── */
+.detail-header {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1rem;
+}
+.detail-actions {
+  display: flex; gap: 0.4rem; align-items: center;
+}
+
+/* ── Search bar ── */
+.search-bar {
+  display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center;
+}
+.search-bar input { flex: 1; }
+.search-bar select { width: 150px; }
+
+/* ── Inline add ── */
+.inline-add {
+  display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+}
+
+/* ── Process status ── */
+#process-status { font-size: var(--s); }
+
+/* ── htmx ── */
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator,
+.htmx-indicator.htmx-request { display: inline; }
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  nav ul { gap: 0.75rem; }
+  nav a { font-size: var(--xs); }
+  .dash-hero { grid-template-columns: 1fr; }
+  .dash-counts { grid-template-columns: repeat(3, 1fr); }
+  .review-card { margin: 1rem 0; padding: 1.25rem; }
+  .review-card .front { font-size: 1.1rem; }
+  .detail-header { flex-direction: column; }
+  .grid { grid-template-columns: 1fr; }
 }

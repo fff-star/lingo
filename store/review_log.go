@@ -6,10 +6,11 @@ import (
 	"time"
 )
 
-// ReviewLog records daily review counts.
-type ReviewLog struct {
+// jsonReviewLog records daily review counts.
+type jsonReviewLog struct {
 	mu       sync.Mutex
 	filePath string
+	data     map[string]int
 }
 
 // ReviewStats holds per-day statistics for chart display.
@@ -19,12 +20,70 @@ type ReviewStats struct {
 	Reviews []int    `json:"reviews"`
 }
 
-func NewReviewLog(filePath string) *ReviewLog {
-	return &ReviewLog{filePath: filePath}
+func NewJSONReviewLog(filePath string) *jsonReviewLog {
+	return &jsonReviewLog{filePath: filePath}
+}
+
+func (l *jsonReviewLog) TodayCount() (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	counts, _ := l.loadUnsafe()
+	today := time.Now().UTC().Format("2006-01-02")
+	return counts[today], nil
+}
+
+func (l *jsonReviewLog) Streak() (current, longest int, err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	counts, _ := l.loadUnsafe()
+
+	var dates []string
+	for d := range counts {
+		dates = append(dates, d)
+	}
+	sort.Strings(dates)
+
+	if len(dates) == 0 {
+		return 0, 0, nil
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+	currentStreak := 0
+	checkDate := time.Now().UTC()
+	for {
+		dateStr := checkDate.Format("2006-01-02")
+		if counts[dateStr] > 0 {
+			currentStreak++
+		} else if dateStr != today {
+			break
+		}
+		checkDate = checkDate.AddDate(0, 0, -1)
+	}
+
+	longestStreak := 0
+	currentRun := 0
+	for i, d := range dates {
+		if i == 0 {
+			currentRun = 1
+		} else {
+			prev, _ := time.Parse("2006-01-02", dates[i-1])
+			curr, _ := time.Parse("2006-01-02", d)
+			if curr.Sub(prev).Hours() <= 24 {
+				currentRun++
+			} else {
+				currentRun = 1
+			}
+		}
+		if currentRun > longestStreak {
+			longestStreak = currentRun
+		}
+	}
+
+	return currentStreak, longestStreak, nil
 }
 
 // Record logs a review event for the given date.
-func (l *ReviewLog) Record(date string) error {
+func (l *jsonReviewLog) Record(date string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -33,11 +92,15 @@ func (l *ReviewLog) Record(date string) error {
 		return err
 	}
 	counts[date] = counts[date] + 1
-	return writeJSON(l.filePath, counts)
+	if err := writeJSON(l.filePath, counts); err != nil {
+		return err
+	}
+	l.data = counts
+	return nil
 }
 
 // Stats returns the last 30 days of review counts plus new-item counts.
-func (l *ReviewLog) Stats(newCounts map[string]int) *ReviewStats {
+func (l *jsonReviewLog) Stats(newCounts map[string]int) *ReviewStats {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -66,7 +129,14 @@ func (l *ReviewLog) Stats(newCounts map[string]int) *ReviewStats {
 	return stats
 }
 
-func (l *ReviewLog) loadUnsafe() (map[string]int, error) {
+func (l *jsonReviewLog) loadUnsafe() (map[string]int, error) {
+	if l.data != nil {
+		out := make(map[string]int, len(l.data))
+		for k, v := range l.data {
+			out[k] = v
+		}
+		return out, nil
+	}
 	var counts map[string]int
 	if err := readJSON(l.filePath, &counts); err != nil {
 		return make(map[string]int), nil
@@ -74,7 +144,8 @@ func (l *ReviewLog) loadUnsafe() (map[string]int, error) {
 	if counts == nil {
 		counts = make(map[string]int)
 	}
-	return counts, nil
+	l.data = counts
+	return l.data, nil
 }
 
 // NewCountsByDate returns per-day counts of items created on each day.

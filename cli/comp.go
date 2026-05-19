@@ -12,9 +12,9 @@ import (
 	"lingo/store"
 )
 
-var compStore *store.CompositionStore
+var compStore store.CompositionStore
 
-func InitComp(cs *store.CompositionStore) {
+func InitComp(cs store.CompositionStore) {
 	compStore = cs
 }
 
@@ -326,6 +326,11 @@ func compAnalyze(args []string) error {
 		}
 	}
 
+	// Show model essay.
+	if items.ModelEssay != "" {
+		fmt.Printf("\n=== Model Essay (范文) ===\n%s\n", items.ModelEssay)
+	}
+
 	// Confirm save.
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Print("\nSave analysis to composition? [Y/n]: ")
@@ -406,6 +411,9 @@ func formatComp(c *model.Composition) string {
 					b.WriteString(fmt.Sprintf("      → %s\n", g.Explanation))
 				}
 			}
+		}
+		if c.AIAnalysis.ModelEssay != "" {
+			b.WriteString(fmt.Sprintf("\nModel Essay (范文):\n%s\n", c.AIAnalysis.ModelEssay))
 		}
 	}
 

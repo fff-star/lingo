@@ -88,13 +88,19 @@ func NewCardState(w [17]float64) (stability, difficulty float64, state int) {
 //	rating      — user rating: Again=1, Hard=2, Good=3, Easy=4
 //	w           — FSRS weights (pass DefaultWeights)
 func Review(stability, difficulty float64, state int, elapsedDays float64, rating int, w [17]float64) (newStability, newDifficulty float64, newState int, scheduledDays int) {
-	// ── First review of a new/learning card: use initial stability ──
-	if state == StateNew || state == StateLearning {
-		newS := initialStabilityForRating(rating, w)
-		newD := updateDifficulty(difficulty, rating, w)
-		newD = clamp(newD, 1, 10)
-		days := int(math.Round(newS))
-		return newS, newD, StateReview, max(days, 1)
+	// Clamp elapsedDays: negative → 0, unreasonably large → cap at maxInterval.
+	// This guards against default zero-time LastReviewedAt and caller mistakes.
+	if elapsedDays < 0 {
+		elapsedDays = 0
+	}
+	if elapsedDays > maxInterval {
+		elapsedDays = maxInterval
+	}
+
+	// ── New / Learning / Relearning: short-interval phase ──
+	// Cards stay in learning until rated Good or Easy (graduate).
+	if state == StateNew || state == StateLearning || state == StateRelearning {
+		return reviewLearning(stability, difficulty, state, elapsedDays, rating, w)
 	}
 
 	// ── Retrievability: probability of recall right now ──
@@ -108,22 +114,21 @@ func Review(stability, difficulty float64, state int, elapsedDays float64, ratin
 	var newS float64
 
 	if rating == RatingAgain {
+		// Lapsed recall — drop to Relearning for same-session re-review.
 		newS = stabilityAfterFailure(stability, R, w)
-		newState = StateRelearning
-	} else {
-		// Hard/Good/Easy share the success path, then apply
-		// hard-penalty or easy-bonus multipliers.
-		S := stabilityAfterSuccess(stability, newD, R, w)
-
-		if rating == RatingHard {
-			S *= w[16] // hard penalty
-		}
-		if rating == RatingEasy {
-			S *= w[15] // easy bonus
-		}
-		newS = S
-		newState = StateReview
+		return newS, newD, StateRelearning, 0
 	}
+
+	// Hard/Good/Easy: success path with penalty/bonus multipliers.
+	S := stabilityAfterSuccess(stability, newD, R, w)
+	if rating == RatingHard {
+		S *= w[16]
+	}
+	if rating == RatingEasy {
+		S *= w[15]
+	}
+	newS = S
+	newState = StateReview
 
 	// ── Scheduled interval from stability ──
 	days := int(math.Round(newS))
@@ -137,20 +142,44 @@ func Review(stability, difficulty float64, state int, elapsedDays float64, ratin
 	return newS, newD, newState, days
 }
 
-// NextInterval computes the ideal interval from a stability value.
-func NextInterval(stability float64, desiredRetention float64) int {
-	if stability <= 0 {
-		return 1
+// reviewLearning handles the learning and relearning phases.
+// New/Learning/Relearning cards stay in a short-interval phase
+// until rated Good or Easy, at which point they graduate to Review.
+// Returns days=0 for non-graduating reviews so callers
+// can set NextReviewAt to an immediate re-review time.
+func reviewLearning(stability, difficulty float64, state int, elapsedDays float64, rating int, w [17]float64) (newStability, newDifficulty float64, newState int, scheduledDays int) {
+	if state == StateRelearning {
+		// Relearning cards keep their stability/difficulty history.
+		R := retrievability(elapsedDays, stability)
+		newD := updateDifficulty(difficulty, rating, w)
+		newD = clamp(newD, 1, 10)
+
+		if rating == RatingAgain || rating == RatingHard {
+			// Stay in relearning — re-review soon in same session.
+			s := stabilityAfterFailure(stability, R, w)
+			return s, newD, StateRelearning, 0
+		}
+		// Good or Easy — graduate via stabilityAfterSuccess.
+		s := stabilityAfterSuccess(stability, newD, R, w)
+		if rating == RatingEasy {
+			s *= w[15]
+		}
+		days := int(math.Round(s))
+		return s, newD, StateReview, max(days, 1)
 	}
-	factor := math.Log(desiredRetention) / math.Log(0.9)
-	days := int(math.Round(stability * factor))
-	if days < 1 {
-		days = 1
+
+	// New or Learning phase.
+	newS := initialStabilityForRating(rating, w)
+	newD := updateDifficulty(difficulty, rating, w)
+	newD = clamp(newD, 1, 10)
+
+	if rating == RatingAgain || rating == RatingHard {
+		// Stay in learning — re-review soon in same session.
+		return newS, newD, StateLearning, 0
 	}
-	if days > maxInterval {
-		days = maxInterval
-	}
-	return days
+	// Good or Easy — graduate to Review with multi-day interval.
+	days := int(math.Round(newS))
+	return newS, newD, StateReview, max(days, 1)
 }
 
 // ─────── internal helpers ───────
@@ -213,6 +242,15 @@ func clamp(v, lo, hi float64) float64 {
 // A zero nextReviewAt means the card has never been reviewed — treat it as due now.
 func Due(nextReviewAt time.Time) bool {
 	return nextReviewAt.IsZero() || time.Now().UTC().After(nextReviewAt)
+}
+
+// NextReviewTime returns the next review time: day-aligned for days > 0,
+// or immediately past for days == 0 (learning phase — review again soon).
+func NextReviewTime(now time.Time, days int) time.Time {
+	if days <= 0 {
+		return now.Add(-time.Minute) // immediately due
+	}
+	return NextDayStart(now, days)
 }
 
 // DaysLate returns how many days overdue a card is (negative = not due yet).

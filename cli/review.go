@@ -7,6 +7,7 @@ import (
 
 	"lingo/model"
 	"lingo/review"
+	"lingo/store"
 )
 
 func init() {
@@ -34,15 +35,16 @@ func reviewStats() error {
 		return err
 	}
 
-	var dueWords int
 	var totalReviewed int
 	for _, w := range words {
 		if w.ReviewCount > 0 {
 			totalReviewed++
 		}
-		if review.Due(w.NextReviewAt) {
-			dueWords++
-		}
+	}
+
+	dueWords, err := wordStore.LoadDue()
+	if err != nil {
+		return err
 	}
 
 	phrases, err := phraseStore.Load()
@@ -50,23 +52,24 @@ func reviewStats() error {
 		return err
 	}
 
-	var duePhrases int
 	var totalPhraseReviewed int
 	for _, p := range phrases {
 		if p.ReviewCount > 0 {
 			totalPhraseReviewed++
 		}
-		if review.Due(p.NextReviewAt) {
-			duePhrases++
-		}
+	}
+
+	duePhrases, err := phraseStore.LoadDue()
+	if err != nil {
+		return err
 	}
 
 	fmt.Println("═══════ Review Stats ═══════")
 	fmt.Println()
-	fmt.Printf("  Words:   %d due, %d reviewed, %d total\n", dueWords, totalReviewed, len(words))
-	fmt.Printf("  Phrases: %d due, %d reviewed, %d total\n", duePhrases, totalPhraseReviewed, len(phrases))
+	fmt.Printf("  Words:   %d due, %d reviewed, %d total\n", len(dueWords), totalReviewed, len(words))
+	fmt.Printf("  Phrases: %d due, %d reviewed, %d total\n", len(duePhrases), totalPhraseReviewed, len(phrases))
 	fmt.Println()
-	totalDue := dueWords + duePhrases
+	totalDue := len(dueWords) + len(duePhrases)
 	newWords := len(words) - totalReviewed
 	newPhrases := len(phrases) - totalPhraseReviewed
 	fmt.Printf("  New: %d words, %d phrases\n", newWords, newPhrases)
@@ -98,12 +101,6 @@ func reviewStart(args []string) error {
 		tags = strings.Split(tagFilter, ",")
 	}
 
-	// Collect due words.
-	words, err := wordStore.Load()
-	if err != nil {
-		return err
-	}
-
 	type item struct {
 		kind string
 		id   string
@@ -112,13 +109,16 @@ func reviewStart(args []string) error {
 		data interface{} // *model.Word or *model.Phrase
 	}
 
+	// Collect due items using SQL-level filtering.
+	dueWords, err := wordStore.LoadDue()
+	if err != nil {
+		return err
+	}
+
 	var due []item
-	for i := range words {
-		w := &words[i]
-		if !review.Due(w.NextReviewAt) {
-			continue
-		}
-		if !matchAnyTagStr(w.Tags, tags) {
+	for i := range dueWords {
+		w := &dueWords[i]
+		if !store.MatchAnyTag(w.Tags, tags) {
 			continue
 		}
 		due = append(due, item{
@@ -130,17 +130,14 @@ func reviewStart(args []string) error {
 		})
 	}
 
-	phrases, err := phraseStore.Load()
+	duePhrases, err := phraseStore.LoadDue()
 	if err != nil {
 		return err
 	}
 
-	for i := range phrases {
-		p := &phrases[i]
-		if !review.Due(p.NextReviewAt) {
-			continue
-		}
-		if !matchAnyTagStr(p.Tags, tags) {
+	for i := range duePhrases {
+		p := &duePhrases[i]
+		if !store.MatchAnyTag(p.Tags, tags) {
 			continue
 		}
 		due = append(due, item{
@@ -166,8 +163,9 @@ func reviewStart(args []string) error {
 	fmt.Println()
 
 	reviewed := 0
-	for _, it := range due {
-		fmt.Printf("┌─ %s %d/%d ────────────────\n", it.kind, reviewed+1, len(due))
+	for i := 0; i < len(due); i++ {
+		it := &due[i]
+		fmt.Printf("┌─ %s %d/%d ────────────────\n", it.kind, i+1, len(due))
 		fmt.Printf("│ %s\n", it.text)
 		fmt.Println("│")
 		fmt.Print("│ Press Enter to reveal...")
@@ -181,7 +179,7 @@ func reviewStart(args []string) error {
 		fmt.Scanln(&input)
 
 		if input == "q" || input == "quit" {
-			fmt.Printf("\nReviewed %d, %d remaining.\n", reviewed, len(due)-reviewed)
+			fmt.Printf("\nReviewed %d, %d remaining.\n", reviewed, len(due)-i-1)
 			return nil
 		}
 
@@ -213,7 +211,7 @@ func reviewStart(args []string) error {
 			w.State = newState
 			w.ReviewCount++
 			w.LastReviewedAt = now
-			w.NextReviewAt = review.NextDayStart(now, days)
+			w.NextReviewAt = review.NextReviewTime(now, days)
 			w.UpdatedAt = now
 			if err := wordStore.Update(*w); err != nil {
 				fmt.Printf("Error saving: %v\n", err)
@@ -234,33 +232,24 @@ func reviewStart(args []string) error {
 			p.State = newState
 			p.ReviewCount++
 			p.LastReviewedAt = now
-			p.NextReviewAt = review.NextDayStart(now, days)
+			p.NextReviewAt = review.NextReviewTime(now, days)
 			p.UpdatedAt = now
 			if err := phraseStore.Update(*p); err != nil {
 				fmt.Printf("Error saving: %v\n", err)
 			}
 		}
 
-		reviewed++
-		fmt.Printf("  → Next review in %d days\n\n", days)
+		if days == 0 {
+			due = append(due, *it)
+			fmt.Printf("  → Again! Will come back around.\n\n")
+		} else {
+			reviewed++
+			fmt.Printf("  → Next review in %d days\n\n", days)
+		}
 	}
 
 	fmt.Printf("Done! Reviewed %d items.\n", reviewed)
 	return nil
-}
-
-func matchAnyTagStr(tags []string, filter []string) bool {
-	if len(filter) == 0 {
-		return true
-	}
-	for _, ft := range filter {
-		for _, t := range tags {
-			if t == ft {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func formatWordDefs(defs []model.Definition) string {

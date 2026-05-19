@@ -2,32 +2,26 @@
 {{if not .Htmx}}
 <h1>Compositions</h1>
 
-<div class="grid">
-  <form hx-get="/compositions" hx-target="#comp-list" hx-trigger="input delay:300ms from:#comp-search, change from:#comp-tag">
-    <div class="grid">
-      <input id="comp-search" name="q" type="search" placeholder="Search compositions..." value="{{.Query}}">
-      <select id="comp-tag" name="tag">
-        <option value="">All tags</option>
-        {{range .AllTags}}
-          <option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>
-        {{end}}
-      </select>
-    </div>
+<div class="search-bar">
+  <form hx-get="/compositions" hx-target="#comp-list" hx-trigger="change from:#comp-tag" style="flex:1;display:flex;gap:0.5em">
+    <input id="comp-search" name="q" type="search" placeholder="Search..." value="{{.Query}}" data-fuzzy-target="#comp-list tbody" style="flex:1">
+    <select id="comp-tag" name="tag" style="width:140px">
+      <option value="">All tags</option>
+      {{range .AllTags}}<option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
   </form>
-  <button id="toggle-add" class="secondary" style="width:auto; white-space:nowrap" onclick="document.getElementById('add-form').toggleAttribute('hidden')">+ New Composition</button>
+  <button class="secondary" onclick="document.getElementById('add-form').toggleAttribute('hidden')">+ New</button>
 </div>
 
 <form id="add-form" hidden hx-post="/compositions/add" hx-target="#comp-list" hx-swap="innerHTML"
-      hx-on::after-request="if(event.detail.elt === this && event.detail.successful) { this.reset(); this.toggleAttribute('hidden'); }">
+      hx-on::after-request="if(event.detail.successful) { this.reset(); this.toggleAttribute('hidden'); }">
   <fieldset>
     <legend>Add Composition</legend>
     <input name="title" placeholder="Title" required>
     <input name="author" placeholder="Author">
-    <label>Content
-      <textarea name="content" rows="12" placeholder="Write or paste your composition here..."></textarea>
-    </label>
-    <div class="grid">
-      <input name="tags" placeholder="Tags (comma-separated)">
+    <label>Content <textarea name="content" rows="8" placeholder="Paste text..."></textarea></label>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <input name="tags" placeholder="Tags">
       <input name="notes" placeholder="Notes">
     </div>
     <button type="submit">Save</button>
@@ -37,52 +31,37 @@
 
 <div id="comp-list">
   {{if .Detail}}
-    <div id="detail-view">
-    <article>
-      <div class="grid">
+    <div id="detail-view"><article>
+      <div class="detail-header">
         <h2>{{.Detail.Title}}</h2>
-        <div style="display:flex; gap:0.5em">
+        <div class="detail-actions">
           {{if not .Detail.AIAnalysis}}
-          <button class="secondary"
-                  hx-post="/compositions/{{.Detail.ID}}/process"
-                  hx-target="#comp-list"
-                  hx-swap="innerHTML"
-                  hx-indicator="#process-spin">
-            AI Process
-          </button>
-          <span id="process-spin" class="htmx-indicator" style="align-self:center">Processing...</span>
+          <button id="process-btn" class="secondary" onclick="processWithAI('/compositions/{{.Detail.ID}}/process-stream')">AI Analyze</button>
+          <span id="process-status"></span>
           {{end}}
           <button class="secondary" onclick="document.getElementById('detail-view').hidden=true;document.getElementById('edit-form').hidden=false">Edit</button>
-          <button class="secondary"
-                  hx-delete="/compositions/{{.Detail.ID}}"
-                  hx-confirm="Delete '{{.Detail.Title}}'?"
-                  hx-target="body">
-            Delete
-          </button>
+          <button class="secondary" hx-delete="/compositions/{{.Detail.ID}}" hx-confirm="Delete?" hx-target="body">Delete</button>
         </div>
       </div>
-      <p><small>ID: {{.Detail.ID}}{{if .Detail.Author}} · by {{.Detail.Author}}{{end}}</small></p>
-      {{if .Detail.Tags}}<p><strong>Tags:</strong> {{join .Detail.Tags ", "}}</p>{{end}}
+      <p><small style="opacity:0.5">{{.Detail.ID}}{{if .Detail.Author}} · {{.Detail.Author}}{{end}}</small></p>
+      {{if .Detail.Tags}}<p>{{range .Detail.Tags}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
       <hr>
       <div class="markdown-body" style="white-space:pre-wrap">{{.Detail.Content}}</div>
       {{if .Detail.Notes}}<hr><p><strong>Notes:</strong> {{.Detail.Notes}}</p>{{end}}
-      <p><small>Created: {{.Detail.CreatedAt}}</small></p>
-    </article>
-    </div>
+      <p><small style="opacity:0.4">Created: {{.Detail.CreatedAt}}</small></p>
+    </article></div>
 
     <form id="edit-form" hidden hx-put="/compositions/{{.Detail.ID}}" hx-target="#comp-list" hx-swap="innerHTML">
     <fieldset>
-      <legend>Edit {{.Detail.Title}}</legend>
+      <legend>Edit</legend>
       <input name="title" value="{{.Detail.Title}}" required>
       <input name="author" value="{{.Detail.Author}}" placeholder="Author">
-      <label>Content
-        <textarea name="content" rows="12">{{.Detail.Content}}</textarea>
-      </label>
-      <div class="grid">
+      <label>Content <textarea name="content" rows="8">{{.Detail.Content}}</textarea></label>
+      <div class="grid" style="grid-template-columns:1fr 1fr">
         <input name="tags" value="{{join .Detail.Tags ", "}}" placeholder="Tags">
         <input name="notes" value="{{.Detail.Notes}}" placeholder="Notes">
       </div>
-      <div style="display:flex; gap:0.5em">
+      <div style="display:flex;gap:0.5em">
         <button type="submit">Save</button>
         <button type="button" class="secondary" onclick="document.getElementById('edit-form').hidden=true;document.getElementById('detail-view').hidden=false">Cancel</button>
       </div>
@@ -90,88 +69,41 @@
     </form>
 
     {{if .Detail.AIAnalysis}}
-    <article style="background:var(--pico-card-background-color); margin-top:1em">
+    <article style="margin-top:0.75rem">
       <h3>AI Analysis</h3>
-
-      {{if .Detail.AIAnalysis.Summary}}
-      <h4>Summary</h4>
-      <p>{{.Detail.AIAnalysis.Summary}}</p>
-      {{end}}
-
-      {{if .Detail.AIAnalysis.Words}}
-      <h4>Words ({{len .Detail.AIAnalysis.Words}})</h4>
-      {{range .Detail.AIAnalysis.Words}}
-      <div style="margin-bottom:1em; padding:0.5em; border-left:3px solid var(--pico-primary)">
-        <strong>{{.Word}}</strong>
-        {{if .Definitions}}<br>
-        {{range .Definitions}}<span class="tag">{{.Pos}}</span> {{.Meaning}}<br>{{end}}
-        {{end}}
-        {{if .Example}}<br><em>ex: {{.Example}}</em>{{end}}
-        {{if .Synonyms}}<br>Synonyms: {{join .Synonyms ", "}}{{end}}
-        {{if .Notes}}<br><small>Note: {{.Notes}}</small>{{end}}
+      {{if .Detail.AIAnalysis.Corrections}}
+      <h4>Corrections</h4>
+      {{range .Detail.AIAnalysis.Corrections}}
+      <div class="ai-block" style="border-left-color:#e74c3c">
+        <p style="text-decoration:line-through;opacity:0.5">{{.Original}}</p>
+        <p>{{.Corrected}}</p>
+        {{if .Explanation}}<p><small style="opacity:0.5">{{.Explanation}}</small></p>{{end}}
       </div>
       {{end}}
       {{end}}
-
-      {{if .Detail.AIAnalysis.Phrases}}
-      <h4>Phrases ({{len .Detail.AIAnalysis.Phrases}})</h4>
-      {{range .Detail.AIAnalysis.Phrases}}
-      <div style="margin-bottom:1em; padding:0.5em; border-left:3px solid var(--pico-contrast)">
-        <strong>{{.Phrase}}</strong> <span class="tag">{{.Type}}</span>
-        <br>{{.Definition}}
-        {{if .Example}}<br><em>ex: {{.Example}}</em>{{end}}
-        {{if .Synonyms}}<br>Synonyms: {{join .Synonyms ", "}}{{end}}
-        {{if .Notes}}<br><small>Note: {{.Notes}}</small>{{end}}
-      </div>
-      {{end}}
-      {{end}}
-
-      {{if .Detail.AIAnalysis.Sentences}}
-      <h4>Sentences ({{len .Detail.AIAnalysis.Sentences}})</h4>
-      {{range .Detail.AIAnalysis.Sentences}}
-      <div style="margin-bottom:1em; padding:0.5em; border-left:3px solid var(--pico-muted-border-color)">
-        <blockquote>{{.Text}}</blockquote>
-        {{if .Translation}}<p>译：{{.Translation}}</p>{{end}}
-        {{if .Why}}<p><small>Why: {{.Why}}</small></p>{{end}}
-        {{if .SuggestedTags}}<p>Tags: {{join .SuggestedTags ", "}}</p>{{end}}
-      </div>
-      {{end}}
-      {{end}}
-
-      {{if .Detail.AIAnalysis.GrammarErrors}}
-      <h4>Grammar Errors ({{len .Detail.AIAnalysis.GrammarErrors}})</h4>
-      {{range .Detail.AIAnalysis.GrammarErrors}}
-      <div style="margin-bottom:1em; padding:0.5em; border-left:3px solid #e74c3c">
-        <p style="text-decoration:line-through;color:var(--pico-muted-color);margin-bottom:0.2em">{{.Sentence}}</p>
-        <p style="font-weight:bold;color:#27ae60;margin-bottom:0.2em">{{.Correction}}</p>
-        {{if .Explanation}}<p style="margin-bottom:0.2em"><small>{{.Explanation}}</small></p>{{end}}
-        <span class="tag" style="font-size:0.7em">{{.ErrorType}}</span>
-      </div>
-      {{end}}
+      {{if .Detail.AIAnalysis.ModelEssay}}
+      <h4>Model Essay</h4>
+      <div class="markdown-body">{{.Detail.AIAnalysis.ModelEssay}}</div>
       {{end}}
     </article>
     {{end}}
 
-    <p><a href="/compositions">← Back to compositions</a></p>
-
+    <p><a href="/compositions">← Back</a></p>
   {{else}}
-    <table class="striped">
-      <thead><tr><th>ID</th><th>Title</th><th>Author</th><th>Tags</th><th></th></tr></thead>
+    <table>
+      <thead><tr><th>Title</th><th>Author</th><th>Tags</th><th></th></tr></thead>
       <tbody>
       {{range .Compositions}}
-      <tr>
-        <td><a href="/compositions/{{.ID}}">{{.ID}}</a></td>
-        <td>{{.Title}}</td>
-        <td>{{.Author}}</td>
+      <tr data-search="{{.Content}}">
+        <td><a href="/compositions/{{.ID}}">{{.Title}}</a></td>
+        <td style="opacity:0.6">{{.Author}}</td>
         <td>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</td>
-        <td>
-          {{if not .AIAnalysis}}<span class="tag" style="background:var(--pico-contrast-background);color:var(--pico-contrast-inverse)">unprocessed</span>{{end}}
-        </td>
+        <td>{{if not .AIAnalysis}}<span class="tag" style="background:var(--pico-contrast-background);color:var(--pico-contrast-inverse)">new</span>{{end}}</td>
       </tr>
       {{end}}
       </tbody>
     </table>
-    <p><small>{{len .Compositions}} compositions</small></p>
+    <p><small style="opacity:0.4">{{len .Compositions}} compositions</small></p>
   {{end}}
 </div>
 {{end}}

@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,26 +22,23 @@ func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var due []dueItem
-	words, _ := s.Words.Load()
-	for _, w := range words {
-		if review.Due(w.NextReviewAt) {
-			def := ""
-			if len(w.Definitions) > 0 {
-				def = w.Definitions[0].Meaning
-			}
-			due = append(due, dueItem{ID: w.ID, Text: w.Word, Type: "word", Def: def})
+	dueWords, _ := s.Words.LoadDue()
+	for _, w := range dueWords {
+		def := ""
+		if len(w.Definitions) > 0 {
+			def = w.Definitions[0].Meaning
 		}
+		due = append(due, dueItem{ID: w.ID, Text: w.Word, Type: "word", Def: def})
 	}
 
-	phrases, _ := s.Phrases.Load()
-	for _, p := range phrases {
-		if review.Due(p.NextReviewAt) {
-			due = append(due, dueItem{ID: p.ID, Text: p.Phrase, Type: "phrase", Def: p.Definition})
-		}
+	duePhrases, _ := s.Phrases.LoadDue()
+	for _, p := range duePhrases {
+		due = append(due, dueItem{ID: p.ID, Text: p.Phrase, Type: "phrase", Def: p.Definition})
 	}
 
 	wordCount, _ := s.Words.Count()
 	phraseCount, _ := s.Phrases.Count()
+	todayCount, _ := s.ReviewLog.TodayCount()
 
 	s.render(w, r, "review.html", map[string]interface{}{
 		"Title":       "Review",
@@ -48,30 +46,31 @@ func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
 		"DueCount":    len(due),
 		"WordCount":   wordCount,
 		"PhraseCount": phraseCount,
+		"TodayCount":  todayCount,
+		"DailyGoal":   20,
 	})
 }
 
 // nextDue holds the identity of the next due card.
 type nextDue struct {
-	kind string
-	id   string
-	text string
-	def  string
+	kind     string
+	id       string
+	text     string
+	def      string
+	audioURL string
 }
 
 // findNextDue returns the first due word or phrase.
 func (s *Server) findNextDue() (*nextDue, bool) {
-	words, _ := s.Words.Load()
-	for _, w := range words {
-		if review.Due(w.NextReviewAt) {
-			return &nextDue{"word", w.ID, w.Word, formatWordDefs(w.Definitions)}, true
-		}
+	words, _ := s.Words.LoadDue()
+	if len(words) > 0 {
+		w := words[0]
+		return &nextDue{"word", w.ID, w.Word, formatWordDefs(w.Definitions), w.AudioURL}, true
 	}
-	phrases, _ := s.Phrases.Load()
-	for _, p := range phrases {
-		if review.Due(p.NextReviewAt) {
-			return &nextDue{"phrase", p.ID, p.Phrase, p.Definition}, true
-		}
+	phrases, _ := s.Phrases.LoadDue()
+	if len(phrases) > 0 {
+		p := phrases[0]
+		return &nextDue{"phrase", p.ID, p.Phrase, p.Definition, ""}, true
 	}
 	return nil, false
 }
@@ -96,11 +95,14 @@ func (s *Server) renderReviewCard(w http.ResponseWriter, feedback string) {
 	if feedback != "" {
 		fmt.Fprintf(w, `<p style="text-align:center;color:var(--pico-muted-color)">%s</p>`, feedback)
 	}
-	fmt.Fprintf(w, `<div class="front" id="front-%s">%s</div>`, item.id, item.text)
+	fmt.Fprintf(w, `<div class="front" id="front-%s">%s</div>`, item.id, html.EscapeString(item.text))
+	if item.audioURL != "" {
+		fmt.Fprintf(w, `<p style="text-align:center;margin-top:0.5em"><a href="#" onclick="new Audio('%s').play();return false" style="text-decoration:none" title="Play pronunciation">🔊</a></p>`, html.EscapeString(item.audioURL))
+	}
 	fmt.Fprintf(w, `<button id="show-%s" class="secondary" style="width:100%%;margin-top:1rem" onclick="document.getElementById('back-%s').hidden=false;this.hidden=true">Show Answer</button>`, item.id, item.id)
 	fmt.Fprintf(w, `<div class="back" id="back-%s" hidden>`, item.id)
 	if item.def != "" {
-		fmt.Fprintf(w, `<p style="white-space:pre-line">%s</p>`, item.def)
+		fmt.Fprintf(w, `<p style="white-space:pre-line">%s</p>`, html.EscapeString(item.def))
 	}
 	fmt.Fprint(w, `<div class="rating-buttons">`)
 	for i := 1; i <= 4; i++ {
@@ -157,9 +159,12 @@ func (s *Server) handleReviewRate(w http.ResponseWriter, r *http.Request) {
 		wrd.State = newState
 		wrd.ReviewCount++
 		wrd.LastReviewedAt = now
-		wrd.NextReviewAt = review.NextDayStart(now, days)
+		wrd.NextReviewAt = review.NextReviewTime(now, days)
 		wrd.UpdatedAt = now
-		s.Words.Update(*wrd)
+		if err := s.Words.Update(*wrd); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		nextDays = days
 		itemText = wrd.Word
 
@@ -181,9 +186,12 @@ func (s *Server) handleReviewRate(w http.ResponseWriter, r *http.Request) {
 		phr.State = newState
 		phr.ReviewCount++
 		phr.LastReviewedAt = now
-		phr.NextReviewAt = review.NextDayStart(now, days)
+		phr.NextReviewAt = review.NextReviewTime(now, days)
 		phr.UpdatedAt = now
-		s.Phrases.Update(*phr)
+		if err := s.Phrases.Update(*phr); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 		nextDays = days
 		itemText = phr.Phrase
 	}

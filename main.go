@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"lingo/cli"
 	"lingo/store"
@@ -33,6 +34,11 @@ func dataDirFromEnv() string {
 	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
 		return filepath.Join(d, "lingo")
 	}
+	if runtime.GOOS == "windows" {
+		if appData := os.Getenv("APPDATA"); appData != "" {
+			return filepath.Join(appData, "lingo")
+		}
+	}
 	if home, _ := os.UserHomeDir(); home != "" {
 		return filepath.Join(home, ".local", "share", "lingo")
 	}
@@ -42,13 +48,20 @@ func dataDirFromEnv() string {
 func main() {
 	dataDir := dataDirFromEnv()
 
-	ws := store.NewWordStore(filepath.Join(dataDir, "words.json"))
-	ps := store.NewPhraseStore(filepath.Join(dataDir, "phrases.json"))
-	ss := store.NewSentenceStore(filepath.Join(dataDir, "sentences.json"))
-	as := store.NewArticleStore(filepath.Join(dataDir, "articles.json"))
-	cs := store.NewCompositionStore(filepath.Join(dataDir, "compositions.json"))
-	ts := store.NewTagStore(filepath.Join(dataDir, "tags.json"))
-	rl := store.NewReviewLog(filepath.Join(dataDir, "review_log.json"))
+	db, err := store.OpenDB(filepath.Join(dataDir, "lingo.db"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "db: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	ws := store.NewWordStore(db)
+	ps := store.NewPhraseStore(db)
+	ss := store.NewSentenceStore(db)
+	as := store.NewArticleStore(db)
+	cs := store.NewCompositionStore(db)
+	ts := store.NewTagStore(db)
+	rl := store.NewReviewLog(db)
 
 	cli.InitWord(ws)
 	cli.InitPhrase(ps)

@@ -23,11 +23,12 @@ func TestFirstReview(t *testing.T) {
 	tests := []struct {
 		rating    int
 		wantState int
+		wantDays  bool // true = expect days >= 1, false = expect days == 0
 	}{
-		{RatingAgain, StateReview},
-		{RatingHard, StateReview},
-		{RatingGood, StateReview},
-		{RatingEasy, StateReview},
+		{RatingAgain, StateLearning, false},
+		{RatingHard, StateLearning, false},
+		{RatingGood, StateReview, true},
+		{RatingEasy, StateReview, true},
 	}
 
 	for _, tt := range tests {
@@ -43,8 +44,11 @@ func TestFirstReview(t *testing.T) {
 		if newD < 1 || newD > 10 {
 			t.Errorf("rating=%d: difficulty = %f, want in [1,10]", tt.rating, newD)
 		}
-		if days < 1 {
+		if tt.wantDays && days < 1 {
 			t.Errorf("rating=%d: scheduled days = %d, want >= 1", tt.rating, days)
+		}
+		if !tt.wantDays && days != 0 {
+			t.Errorf("rating=%d: scheduled days = %d, want 0", tt.rating, days)
 		}
 	}
 }
@@ -185,12 +189,201 @@ func TestNextDayStart(t *testing.T) {
 	}
 }
 
-func TestNextInterval(t *testing.T) {
-	days := NextInterval(10, 0.9)
-	if days < 1 {
-		t.Errorf("NextInterval(10, 0.9) = %d, want >= 1", days)
+// ── Learning & Relearning state machine boundary tests ──
+
+func TestLearningStayOnAgainHard(t *testing.T) {
+	// A Learning card rated Again or Hard stays in Learning with 0 days.
+	for _, rating := range []int{RatingAgain, RatingHard} {
+		s, d, state, days := Review(2.0, 5.0, StateLearning, 0, rating, DefaultWeights)
+		if state != StateLearning {
+			t.Errorf("rating=%d: state = %d, want StateLearning(%d)", rating, state, StateLearning)
+		}
+		if days != 0 {
+			t.Errorf("rating=%d: days = %d, want 0 (same-session re-review)", rating, days)
+		}
+		if s <= 0 {
+			t.Errorf("rating=%d: stability = %f, want > 0", rating, s)
+		}
+		if d < 1 || d > 10 {
+			t.Errorf("rating=%d: difficulty = %f, want in [1,10]", rating, d)
+		}
 	}
-	if days > 36500 {
-		t.Errorf("NextInterval(10, 0.9) = %d, want <= 36500", days)
+}
+
+func TestLearningGraduateOnGoodEasy(t *testing.T) {
+	// A Learning card rated Good or Easy graduates to Review with ≥1 day.
+	for _, rating := range []int{RatingGood, RatingEasy} {
+		s, d, state, days := Review(2.0, 5.0, StateLearning, 0, rating, DefaultWeights)
+		if state != StateReview {
+			t.Errorf("rating=%d: state = %d, want StateReview(%d)", rating, state, StateReview)
+		}
+		if days < 1 {
+			t.Errorf("rating=%d: days = %d, want >= 1", rating, days)
+		}
+		if s <= 0 {
+			t.Errorf("rating=%d: stability = %f, want > 0", rating, s)
+		}
+		if d < 1 || d > 10 {
+			t.Errorf("rating=%d: difficulty = %f, want in [1,10]", rating, d)
+		}
+	}
+}
+
+func TestRelearningStayOnAgainHard(t *testing.T) {
+	// A Relearning card rated Again or Hard stays in Relearning with 0 days.
+	for _, rating := range []int{RatingAgain, RatingHard} {
+		s, _, state, days := Review(5.0, 6.0, StateRelearning, 0.5, rating, DefaultWeights)
+		if state != StateRelearning {
+			t.Errorf("rating=%d: state = %d, want StateRelearning(%d)", rating, state, StateRelearning)
+		}
+		if days != 0 {
+			t.Errorf("rating=%d: days = %d, want 0 (same-session re-review)", rating, days)
+		}
+		// Stability after failure should not grow.
+		if s > 10 {
+			t.Errorf("rating=%d: stability = %f, expected low after failure", rating, s)
+		}
+	}
+}
+
+func TestRelearningGraduateOnGoodEasy(t *testing.T) {
+	// A Relearning card rated Good or Easy graduates back to Review with ≥1 day.
+	for _, rating := range []int{RatingGood, RatingEasy} {
+		s, _, state, days := Review(5.0, 6.0, StateRelearning, 0.5, rating, DefaultWeights)
+		if state != StateReview {
+			t.Errorf("rating=%d: state = %d, want StateReview(%d)", rating, state, StateReview)
+		}
+		if days < 1 {
+			t.Errorf("rating=%d: days = %d, want >= 1", rating, days)
+		}
+		if s <= 0 {
+			t.Errorf("rating=%d: stability = %f, want > 0", rating, s)
+		}
+	}
+}
+
+func TestReviewAgainReturnsZeroDays(t *testing.T) {
+	// Regression: Review+Again must return 0 days for same-session re-review.
+	s, d, state, days := Review(10.0, 5.0, StateReview, 10.0, RatingAgain, DefaultWeights)
+	if state != StateRelearning {
+		t.Errorf("state = %d, want StateRelearning(%d)", state, StateRelearning)
+	}
+	if days != 0 {
+		t.Errorf("days = %d, want 0 (immediate re-review after lapse)", days)
+	}
+	// Stability should drop significantly after failure.
+	if s > 10.0 {
+		t.Errorf("stability after failure = %f, expected <= 10 (drop from prior 10)", s)
+	}
+	if d < 1 || d > 10 {
+		t.Errorf("difficulty = %f, want in [1,10]", d)
+	}
+}
+
+func TestElapsedDaysClamp(t *testing.T) {
+	// Negative elapsedDays → clamped to 0 (e.g. clock skew or bad data).
+	sNeg, _, stateNeg, _ := Review(10.0, 5.0, StateReview, -5.0, RatingGood, DefaultWeights)
+	if stateNeg != StateReview {
+		t.Errorf("negative elapsed: state = %d, want StateReview", stateNeg)
+	}
+	if sNeg <= 0 {
+		t.Error("negative elapsed: stability should be > 0")
+	}
+
+	// Very large elapsedDays → capped at maxInterval.
+	sHuge, _, stateHuge, _ := Review(10.0, 5.0, StateReview, 100000.0, RatingGood, DefaultWeights)
+	if stateHuge != StateReview {
+		t.Errorf("huge elapsed: state = %d, want StateReview", stateHuge)
+	}
+	if sHuge <= 0 {
+		t.Error("huge elapsed: stability should be > 0")
+	}
+}
+
+func TestConsecutiveFailuresDecayStability(t *testing.T) {
+	// Multiple Again ratings should steadily decrease stability.
+	s, d, state := NewCardState(DefaultWeights)
+	// First review: Good to establish baseline.
+	s, d, state, _ = Review(s, d, state, 0, RatingGood, DefaultWeights)
+	baselineDays := int(math.Round(s))
+
+	// Second review: Again → drops to Relearning.
+	s, d, state, _ = Review(s, d, state, float64(baselineDays), RatingAgain, DefaultWeights)
+	if state != StateRelearning {
+		t.Fatalf("after first Again: state = %d, want Relearning", state)
+	}
+	afterFirstFail := s
+
+	// Third review: Again (still in Relearning) → should drop further or stay low.
+	s, _, state, _ = Review(s, d, state, 0, RatingAgain, DefaultWeights)
+	if s > afterFirstFail*1.1 {
+		t.Errorf("consecutive Again: stability %f > previous %f, expected decay", s, afterFirstFail)
+	}
+	if state != StateRelearning {
+		t.Errorf("after second Again: state = %d, want Relearning", state)
+	}
+}
+
+func TestNextReviewTime(t *testing.T) {
+	now := time.Date(2026, 5, 19, 14, 30, 0, 0, time.UTC)
+
+	// days=0 → immediately past (due right now).
+	t0 := NextReviewTime(now, 0)
+	if !t0.Before(now) {
+		t.Errorf("NextReviewTime(now, 0) = %s, want before now", t0)
+	}
+
+	// days=1 → next day 00:00.
+	t1 := NextReviewTime(now, 1)
+	expected := time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC)
+	if !t1.Equal(expected) {
+		t.Errorf("NextReviewTime(now, 1) = %s, want %s", t1, expected)
+	}
+
+	// days=-1 (caller mistake) → treated as 0, immediately past.
+	tNeg := NextReviewTime(now, -1)
+	if !tNeg.Before(now) {
+		t.Errorf("NextReviewTime(now, -1) = %s, want before now", tNeg)
+	}
+}
+
+func TestDueZeroTime(t *testing.T) {
+	// A zero time means the card has never been reviewed — should be due.
+	if !Due(time.Time{}) {
+		t.Error("zero time (never reviewed) should be due")
+	}
+}
+
+func TestDaysLateFuture(t *testing.T) {
+	// A card due in the future should have negative days late.
+	future := time.Now().UTC().Add(48 * time.Hour)
+	days := DaysLate(future)
+	if days >= 0 {
+		t.Errorf("DaysLate for future = %f, want negative", days)
+	}
+}
+
+func TestRetrievabilityDecay(t *testing.T) {
+	// After half the stability period, retrievability should be between 0.9 and 1.0.
+	r := retrievability(5, 10)
+	// After 5 days with 10-day stability: R = 0.9^(5/10) ≈ 0.949
+	if r < 0.9 || r > 1.0 {
+		t.Errorf("retrievability(5, 10) = %f, want in [0.9, 1.0]", r)
+	}
+
+	// After twice the stability, retrievability should be below 0.9.
+	r = retrievability(20, 10)
+	if r > 0.81 { // 0.9^2 = 0.81
+		t.Errorf("retrievability(20, 10) = %f, want <= 0.81", r)
+	}
+}
+
+func TestRatingConstants(t *testing.T) {
+	// Verify rating constants are as expected (FSRS-5 standard).
+	if RatingAgain != 1 || RatingHard != 2 || RatingGood != 3 || RatingEasy != 4 {
+		t.Error("rating constants mismatch")
+	}
+	if StateNew != 0 || StateLearning != 1 || StateReview != 2 || StateRelearning != 3 {
+		t.Error("state constants mismatch")
 	}
 }

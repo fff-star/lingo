@@ -9,6 +9,7 @@ type AIAnalysis struct {
 	Phrases       []ExtractedPhrase   `json:"phrases"`
 	Sentences     []ExtractedSentence `json:"sentences"`
 	GrammarErrors []GrammarError      `json:"grammar_errors"`
+	ModelEssay    string              `json:"model_essay,omitempty"`
 	SuggestedTags []string            `json:"suggested_tags"`
 }
 

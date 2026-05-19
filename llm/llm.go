@@ -74,16 +74,36 @@ func ChatCompletion(cfg *Config, messages []Message) (string, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	requestSize := len(data)
+	// 20-minute timeout: large articles with reasoning models can take a long time.
+	timeout := 1200 * time.Second
+	fmt.Fprintf(os.Stderr, "→ Connected to %s (model: %s), request size: %d bytes, waiting for response (timeout: %v)...\n", cfg.BaseURL, cfg.Model, requestSize, timeout)
+
+	start := time.Now()
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request: %w", err)
+		return "", fmt.Errorf("request (after %v): %w", time.Since(start).Round(time.Second), err)
 	}
 	defer resp.Body.Close()
 
+	fmt.Fprintf(os.Stderr, "→ Response headers received after %v (status: %d), reading body...\n", time.Since(start).Round(time.Second), resp.StatusCode)
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(resp.Body); err != nil {
+		return "", fmt.Errorf("read response (after %v): %w", time.Since(start).Round(time.Second), err)
+	}
+	elapsed := time.Since(start).Round(time.Second)
+	responseSize := buf.Len()
+	fmt.Fprintf(os.Stderr, "→ Response received (%d bytes) after %v, parsing...\n", responseSize, elapsed)
+
 	var result chatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("parse response: %w", err)
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		preview := buf.String()
+		if len(preview) > 500 {
+			preview = preview[:500] + "..."
+		}
+		return "", fmt.Errorf("parse response: %w\n\nRaw response preview:\n%s", err, preview)
 	}
 	if result.Error != nil {
 		return "", fmt.Errorf("API error: %s", result.Error.Message)

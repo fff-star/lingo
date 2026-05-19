@@ -1,48 +1,53 @@
 {{define "content"}}
 <h1>Review</h1>
 
-<div class="grid">
-  <article>
-    <h2>{{.DueCount}}</h2>
-    <p>Due Now</p>
-  </article>
-  <article>
-    <h2>{{.WordCount}}</h2>
-    <p>Total Words</p>
-  </article>
-  <article>
-    <h2>{{.PhraseCount}}</h2>
-    <p>Total Phrases</p>
-  </article>
-</div>
-
-<div hx-get="/review/stats" hx-trigger="load" hx-swap="outerHTML">
-  <p>Loading chart...</p>
-</div>
-
-{{if .Due}}
-<div id="review-card" style="margin-bottom:2rem">
-  <h3>Start Review Session</h3>
-  <div hx-get="/review/start" hx-trigger="load" hx-target="#review-card">
-    <p>Loading first card...</p>
+<div class="dash-panel" style="margin-bottom:1.25rem">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;text-align:center">
+    <div>
+      <span style="font-size:1.6rem;font-weight:600;color:#c0392b">{{.DueCount}}</span>
+      <div style="font-size:var(--xs);color:var(--pico-muted-color);text-transform:uppercase;letter-spacing:0.05em">Due</div>
+    </div>
+    <div>
+      <span style="font-size:1.6rem;font-weight:600">{{.TodayCount}}<small style="font-size:0.45em;opacity:0.35"> / {{.DailyGoal}}</small></span>
+      <div style="font-size:var(--xs);color:var(--pico-muted-color);text-transform:uppercase;letter-spacing:0.05em">Today</div>
+    </div>
+    <div>
+      <span style="font-size:1.6rem;font-weight:600">{{.WordCount}}</span>
+      <div style="font-size:var(--xs);color:var(--pico-muted-color);text-transform:uppercase;letter-spacing:0.05em">Words</div>
+    </div>
+    <div>
+      <span style="font-size:1.6rem;font-weight:600">{{.PhraseCount}}</span>
+      <div style="font-size:var(--xs);color:var(--pico-muted-color);text-transform:uppercase;letter-spacing:0.05em">Phrases</div>
+    </div>
   </div>
 </div>
 
-<h3>Items Due ({{len .Due}})</h3>
+<div hx-get="/review/stats" hx-trigger="load" hx-swap="outerHTML">
+  <p style="opacity:0.5;text-align:center">Loading chart...</p>
+</div>
+
+{{if .Due}}
+<div hx-get="/review/start" hx-trigger="load" hx-target="#review-card" style="margin:1.5rem 0">
+  <p style="opacity:0.5;text-align:center">Loading first card...</p>
+</div>
+<div id="review-card"></div>
+
+<h3 style="margin-top:2rem">Due Items ({{len .Due}})</h3>
 <table>
-  <thead><tr><th>Type</th><th>Item</th><th>Definition</th><th></th></tr></thead>
+  <thead><tr><th>Type</th><th>Item</th><th>Definition</th></tr></thead>
   <tbody>
   {{range .Due}}
   <tr>
     <td><span class="tag">{{.Type}}</span></td>
     <td>{{.Text}}</td>
-    <td>{{.Def}}</td>
-    <td><a href="/review/start?type={{.Type}}&id={{.ID}}">Review</a></td>
+    <td style="opacity:0.6">{{.Def}}</td>
   </tr>
   {{end}}
   </tbody>
 </table>
 {{else}}
-<p>All caught up! No items due for review.</p>
+<div style="text-align:center;padding:2rem 0">
+  <p style="opacity:0.5">All caught up. No items due.</p>
+</div>
 {{end}}
 {{end}}
