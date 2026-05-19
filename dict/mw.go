@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"os"
 	"time"
 
@@ -12,13 +13,15 @@ import (
 
 const mwBaseURL = "https://www.dictionaryapi.com/api/v3/references/collegiate/json/"
 
-// MWResult holds the parsed inflection data from Merriam-Webster.
+// MWResult holds the parsed data from Merriam-Webster.
 type MWResult struct {
 	Stems       []string
 	Inflections []model.Inflection
 	Headword    string
-	Functional  string   // part of speech
-	ShortDefs   []string // short definitions (max 3)
+	Functional  string   // part of speech label
+	Prons       []string // pronunciation strings (cleaned)
+	AudioFile   string   // sound filename from prs
+	ShortDefs   []string // short definitions
 }
 
 // LookupMW queries the Merriam-Webster Collegiate Dictionary for inflections.
@@ -63,17 +66,27 @@ func LookupMW(word string) (*MWResult, error) {
 	}
 
 	result := &MWResult{}
+	var uncertain []int // indices into result.Inflections needing cxs lookup
 
 	// Collect from all homograph entries.
 	for _, e := range entries {
 		if result.Headword == "" {
-			result.Headword = e.Hwi.Hw
+			result.Headword = cleanMWMarkup(e.Hwi.Hw)
 		}
 		if result.Functional == "" && e.Fl != "" {
 			result.Functional = e.Fl
 		}
 		result.Stems = append(result.Stems, e.Meta.Stems...)
 		result.ShortDefs = append(result.ShortDefs, e.ShortDef...)
+
+		for _, pr := range e.Hwi.Prs {
+			if pr.Mw != "" {
+				result.Prons = append(result.Prons, cleanMWMarkup(pr.Mw))
+			}
+			if result.AudioFile == "" && pr.Sound.Audio != "" {
+				result.AudioFile = pr.Sound.Audio
+			}
+		}
 
 		for _, infl := range e.Ins {
 			label := infl.Il
@@ -86,12 +99,36 @@ func LookupMW(word string) (*MWResult, error) {
 			if value == "" && infl.Ifc != "" {
 				value = cleanMWMarkup(infl.Ifc)
 			}
+			// Skip phrasal verb inflections (multi-word values).
+			if strings.Contains(value, " ") {
+				continue
+			}
+
 			if value != "" {
+				if label == "" {
+					var conf bool
+					label, conf = inferInflectionLabel(e.Fl, value)
+					if !conf {
+						uncertain = append(uncertain, len(result.Inflections))
+					}
+				} else if label == "or" || label == "also" || strings.HasPrefix(label, "also ") || strings.HasPrefix(label, "or ") {
+					// "or"/"also" are connectors, not grammatical labels; copy the previous label.
+					if len(result.Inflections) > 0 {
+						label = result.Inflections[len(result.Inflections)-1].Form
+					}
+				}
 				result.Inflections = append(result.Inflections, model.Inflection{
 					Form:  label,
 					Value: value,
 				})
 			}
+		}
+	}
+
+	// Resolve uncertain labels via MW cross-reference lookup.
+	for _, idx := range uncertain {
+		if label := lookupCXSLabel(key, result.Inflections[idx].Value); label != "" {
+			result.Inflections[idx].Form = label
 		}
 	}
 
@@ -107,6 +144,22 @@ func LookupMW(word string) (*MWResult, error) {
 	result.Stems = stems
 
 	return result, nil
+}
+
+// mwAudioURL constructs the full MP3 URL from an MW audio filename.
+func mwAudioURL(audio string) string {
+	if audio == "" {
+		return ""
+	}
+	subdir := audio[:1]
+	if len(audio) >= 3 {
+		if audio[:3] == "bix" {
+			subdir = "bix"
+		} else if audio[:2] == "gg" {
+			subdir = "gg"
+		}
+	}
+	return "https://media.merriam-webster.com/audio/prons/en/us/mp3/" + subdir + "/" + audio + ".mp3"
 }
 
 // cleanMWMarkup removes syllable markers (*) from MW strings.
@@ -158,4 +211,93 @@ type mwIns struct {
 	Ifc string `json:"ifc"` // cutback form
 	Il  string `json:"il"`  // label: "past tense", "plural", "or", "also"
 	Spl string `json:"spl"` // sense-specific plural label
+}
+
+// inferInflectionLabel guesses an inflection label from the part of speech
+// when MW provides neither il nor spl.
+// The second return value is false when the label is a fallback guess
+// (no suffix matched) and the caller should try MW cross-reference lookup.
+func inferInflectionLabel(fl, value string) (label string, confident bool) {
+	// Extract first word for phrasal verbs ("cried down" → "cried").
+	first := value
+	if idx := strings.Index(value, " "); idx >= 0 {
+		first = value[:idx]
+	}
+
+	// Suffix-based detection, ordered from most specific to general.
+	if strings.HasSuffix(first, "ing") {
+		return "present participle", true
+	}
+	if strings.HasSuffix(first, "est") {
+		return "superlative", true
+	}
+	if strings.HasSuffix(first, "er") {
+		return "comparative", true
+	}
+	if strings.HasSuffix(first, "ed") {
+		return "past tense", true
+	}
+	if strings.HasSuffix(first, "en") {
+		return "past participle", true
+	}
+	if strings.HasSuffix(first, "es") || strings.HasSuffix(first, "s") {
+		if strings.Contains(fl, "verb") {
+			return "3rd person singular", true
+		}
+		return "plural", true
+	}
+
+	// Fallback part-of-speech heuristics for irregular forms.
+	if strings.Contains(fl, "verb") {
+		return "past tense", false
+	}
+	if strings.Contains(fl, "noun") {
+		return "plural", false
+	}
+	return "also", false
+}
+
+// lookupCXSLabel queries the MW API for an inflected form and extracts
+// the cross-reference label (cxl) if present.
+func lookupCXSLabel(key, word string) string {
+	// Query only the first word for phrasal forms ("ran across" → "ran").
+	first := word
+	if idx := strings.Index(word, " "); idx >= 0 {
+		first = word[:idx]
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(mwBaseURL + first + "?key=" + key)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return ""
+	}
+
+	var entries []struct {
+		CXS []struct {
+			CXL   string `json:"cxl"`
+			CXTIS []struct {
+				CXT string `json:"cxt"`
+			} `json:"cxtis"`
+		} `json:"cxs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return ""
+	}
+
+	for _, e := range entries {
+		for _, c := range e.CXS {
+			if c.CXL != "" {
+				// "past tense of" → "past tense"
+				// "past participle of" → "past participle"
+				// "past tense and past participle of" → "past tense / past participle"
+				return strings.TrimSuffix(c.CXL, " of")
+			}
+		}
+	}
+	return ""
 }

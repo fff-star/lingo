@@ -85,6 +85,12 @@ type tagProgress struct {
 func (s *Server) handleStatsTags(w http.ResponseWriter, r *http.Request) {
 	tagMap := make(map[string]*tagProgress)
 
+	// Seed with all known tags so empty-tag rows still appear.
+	tags, _ := s.Tags.Load()
+	for _, t := range tags {
+		tagMap[t.Name] = &tagProgress{Name: t.Name}
+	}
+
 	words, _ := s.Words.Load()
 	for _, w := range words {
 		for _, t := range w.Tags {

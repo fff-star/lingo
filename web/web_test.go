@@ -168,7 +168,7 @@ func TestHandleWordCheckFound(t *testing.T) {
 }
 
 func TestHandleWordCheckNotFound(t *testing.T) {
-	t.Skip("requires network access to Free Dictionary API")
+	t.Skip("requires MW_API_KEY env var")
 }
 
 func TestHandleWordDelete(t *testing.T) {

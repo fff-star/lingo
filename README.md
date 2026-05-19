@@ -6,13 +6,13 @@ Personal language material manager — vocabulary, phrases, sentences, articles,
 
 - **5 material types**: words, phrases, sentences, articles, compositions — independent storage, unified tag system
 - **FSRS-5 spaced repetition**: same algorithm as Anki, 4-level rating, adaptive intervals for words and phrases
-- **Dictionary lookup**: Free Dictionary API for definitions, phonetics, examples, audio pronunciation
+- **Dictionary lookup**: Merriam-Webster Collegiate Dictionary API for definitions, phonetics, audio pronunciation, inflections
 - **LLM integration**: DeepSeek for article content extraction, composition analysis (grammar errors + model essay), word inflection suggestions
 - **Built-in fuzzy search**: CLI interactive picker with real-time filtering; web client-side fuzzy filter with instant feedback
 - **Review streak tracking**: daily consecutive review day counter with streak history
 - **Per-tag progress stats**: mastery %, reviewed count, due count broken down by tag
 - **Article inline word lookup**: click any word in an article to see its dictionary definition; one-click add to vocabulary
-- **Audio pronunciation**: play button on word detail and review cards (from Free Dictionary API)
+- **Audio pronunciation**: play button on word detail and review cards (from Merriam-Webster API)
 - **Batch tag management**: bulk assign/unassign tags via CLI (`lingo tag assign`) or web UI
 - **Dark mode** in web UI, persisted to localStorage
 - **Single binary**: compiles to one static file, all assets embedded, fully offline-ready

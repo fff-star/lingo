@@ -102,11 +102,12 @@ func reviewStart(args []string) error {
 	}
 
 	type item struct {
-		kind string
-		id   string
-		text string
-		def  string
-		data interface{} // *model.Word or *model.Phrase
+		kind        string
+		id          string
+		text        string
+		def         string
+		inflections string
+		data        interface{} // *model.Word or *model.Phrase
 	}
 
 	// Collect due items using SQL-level filtering.
@@ -122,11 +123,12 @@ func reviewStart(args []string) error {
 			continue
 		}
 		due = append(due, item{
-			kind: "word",
-			id:   w.ID,
-			text: w.Word,
-			def:  formatWordDefs(w.Definitions),
-			data: w,
+			kind:        "word",
+			id:          w.ID,
+			text:        w.Word,
+			def:         formatWordDefs(w.Definitions),
+			inflections: formatInflections(w.Inflections),
+			data:        w,
 		})
 	}
 
@@ -172,6 +174,9 @@ func reviewStart(args []string) error {
 		fmt.Scanln()
 
 		fmt.Printf("│ %s\n", it.def)
+		if it.inflections != "" {
+			fmt.Printf("│ %s", it.inflections)
+		}
 		fmt.Println("│")
 		fmt.Print("│ [1] Again  [2] Hard  [3] Good  [4] Easy  [q] Quit: ")
 
@@ -257,15 +262,33 @@ func formatWordDefs(defs []model.Definition) string {
 		return ""
 	}
 	var b strings.Builder
-	for i, d := range defs {
+	n := len(defs)
+	if n > 5 {
+		n = 5
+	}
+	for i := 0; i < n; i++ {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		pos := d.Pos
+		pos := defs[i].Pos
 		if pos == "" {
 			pos = "-"
 		}
-		fmt.Fprintf(&b, "[%s] %s", pos, d.Meaning)
+		fmt.Fprintf(&b, "[%s] %s", pos, defs[i].Meaning)
+	}
+	return b.String()
+}
+
+func formatInflections(infs []model.Inflection) string {
+	if len(infs) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, inf := range infs {
+		b.WriteString(inf.Form)
+		b.WriteString(": ")
+		b.WriteString(inf.Value)
+		b.WriteByte('\n')
 	}
 	return b.String()
 }

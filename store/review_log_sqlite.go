@@ -41,6 +41,7 @@ func (l *sqliteReviewLog) Streak() (current, longest int, err error) {
 		}
 		dates = append(dates, d)
 	}
+	rows.Close() // release connection before computation
 
 	if len(dates) == 0 {
 		return 0, 0, nil

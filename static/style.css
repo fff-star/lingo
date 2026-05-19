@@ -124,7 +124,7 @@ table tbody tr:hover { background: var(--pico-table-row-striped-background); }
 
 /* ── Forms ── */
 input, select, textarea {
-  font-size: var(--m);
+  font-size: 1rem;
   padding: 0.4em 0.6em;
   border-radius: 5px;
   border: 1px solid var(--pico-muted-border-color);
@@ -153,6 +153,7 @@ label small { color: var(--pico-muted-color); font-weight: 400; }
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-bottom: 1.2rem;
+  align-items: start;
 }
 
 .dash-panel {

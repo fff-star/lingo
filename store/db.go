@@ -304,7 +304,6 @@ func migrateV1(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("migration v1: %w", err)
 	}
-	defer cols.Close()
 	hasAudioURL := false
 	for cols.Next() {
 		var cid int
@@ -318,6 +317,7 @@ func migrateV1(db *sql.DB) error {
 			break
 		}
 	}
+	cols.Close() // must close before subsequent queries to avoid lock
 	if !hasAudioURL {
 		if _, err := db.Exec("ALTER TABLE words ADD COLUMN audio_url TEXT NOT NULL DEFAULT ''"); err != nil {
 			return fmt.Errorf("add audio_url column: %w", err)

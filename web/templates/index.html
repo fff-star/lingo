@@ -68,14 +68,4 @@
   </div>
 </div>
 
-{{if .Tags}}
-<div class="dash-section-title">Tags</div>
-<div class="tag-cloud">
-  {{range .Tags}}<span class="tag">{{.Name}}</span>{{end}}
-</div>
-{{end}}
-
-<div hx-get="/stats/tags" hx-trigger="load" hx-swap="outerHTML">
-  <p style="opacity:0.5">Loading tag progress...</p>
-</div>
 {{end}}

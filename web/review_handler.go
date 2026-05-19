@@ -53,11 +53,12 @@ func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
 
 // nextDue holds the identity of the next due card.
 type nextDue struct {
-	kind     string
-	id       string
-	text     string
-	def      string
-	audioURL string
+	kind        string
+	id          string
+	text        string
+	def         string
+	inflections string
+	audioURL    string
 }
 
 // findNextDue returns the first due word or phrase.
@@ -65,12 +66,17 @@ func (s *Server) findNextDue() (*nextDue, bool) {
 	words, _ := s.Words.LoadDue()
 	if len(words) > 0 {
 		w := words[0]
-		return &nextDue{"word", w.ID, w.Word, formatWordDefs(w.Definitions), w.AudioURL}, true
+		return &nextDue{
+			kind: "word", id: w.ID, text: w.Word,
+			def:         formatWordDefs(w.Definitions),
+			inflections: formatInflections(w.Inflections),
+			audioURL:    w.AudioURL,
+		}, true
 	}
 	phrases, _ := s.Phrases.LoadDue()
 	if len(phrases) > 0 {
 		p := phrases[0]
-		return &nextDue{"phrase", p.ID, p.Phrase, p.Definition, ""}, true
+		return &nextDue{"phrase", p.ID, p.Phrase, p.Definition, "", ""}, true
 	}
 	return nil, false
 }
@@ -103,6 +109,9 @@ func (s *Server) renderReviewCard(w http.ResponseWriter, feedback string) {
 	fmt.Fprintf(w, `<div class="back" id="back-%s" hidden>`, item.id)
 	if item.def != "" {
 		fmt.Fprintf(w, `<p style="white-space:pre-line">%s</p>`, html.EscapeString(item.def))
+	}
+	if item.inflections != "" {
+		fmt.Fprintf(w, `<p style="white-space:pre-line;opacity:0.7">%s</p>`, html.EscapeString(item.inflections))
 	}
 	fmt.Fprint(w, `<div class="rating-buttons">`)
 	for i := 1; i <= 4; i++ {
@@ -255,15 +264,33 @@ func formatWordDefs(defs []model.Definition) string {
 		return ""
 	}
 	var b strings.Builder
-	for i, d := range defs {
+	n := len(defs)
+	if n > 5 {
+		n = 5
+	}
+	for i := 0; i < n; i++ {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		pos := d.Pos
+		pos := defs[i].Pos
 		if pos == "" {
 			pos = "-"
 		}
-		fmt.Fprintf(&b, "[%s] %s", pos, d.Meaning)
+		fmt.Fprintf(&b, "[%s] %s", pos, defs[i].Meaning)
+	}
+	return b.String()
+}
+
+func formatInflections(inflections []model.Inflection) string {
+	if len(inflections) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, inf := range inflections {
+		b.WriteString(inf.Form)
+		b.WriteString(": ")
+		b.WriteString(inf.Value)
+		b.WriteByte('\n')
 	}
 	return b.String()
 }
