@@ -413,6 +413,17 @@ func formatWord(w *model.Word) string {
 	}
 	b.WriteString(fmt.Sprintf("ID: %s\n", w.ID))
 
+	if len(w.ECDictDefs) > 0 {
+		b.WriteString("Chinese Definitions:\n")
+		for _, d := range w.ECDictDefs {
+			pos := d.Pos
+			if pos == "" {
+				pos = "-"
+			}
+			b.WriteString(fmt.Sprintf("  [%s] %s\n", pos, d.Meaning))
+		}
+	}
+
 	if len(w.Definitions) > 0 {
 		b.WriteString("Definitions:\n")
 		for _, d := range w.Definitions {

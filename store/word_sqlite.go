@@ -20,7 +20,7 @@ func NewWordStore(db *sql.DB) WordStore {
 }
 
 func (s *sqliteWordStore) Load() ([]model.Word, error) {
-	rows, err := s.db.Query(`SELECT id, word, phonetic, audio_url, definitions, examples, inflections,
+	rows, err := s.db.Query(`SELECT id, word, phonetic, audio_url, definitions, ecdict_defs, examples, inflections,
 		synonyms, advanced, tags, notes, review_count,
 		last_reviewed_at, next_review_at, stability, difficulty, state,
 		created_at, updated_at FROM words ORDER BY word`)
@@ -33,7 +33,7 @@ func (s *sqliteWordStore) Load() ([]model.Word, error) {
 
 func (s *sqliteWordStore) LoadDue() ([]model.Word, error) {
 	now := fmtTime(time.Now().UTC())
-	rows, err := s.db.Query(`SELECT id, word, phonetic, audio_url, definitions, examples, inflections,
+	rows, err := s.db.Query(`SELECT id, word, phonetic, audio_url, definitions, ecdict_defs, examples, inflections,
 		synonyms, advanced, tags, notes, review_count,
 		last_reviewed_at, next_review_at, stability, difficulty, state,
 		created_at, updated_at FROM words
@@ -58,9 +58,9 @@ func (s *sqliteWordStore) Save(words []model.Word) error {
 	}
 
 	stmt, err := tx.Prepare(`INSERT INTO words
-		(id, word, phonetic, audio_url, definitions, examples, inflections, synonyms, advanced, tags, notes,
+		(id, word, phonetic, audio_url, definitions, ecdict_defs, examples, inflections, synonyms, advanced, tags, notes,
 		 review_count, last_reviewed_at, next_review_at, stability, difficulty, state, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -76,11 +76,11 @@ func (s *sqliteWordStore) Save(words []model.Word) error {
 
 func (s *sqliteWordStore) Add(w model.Word) error {
 	_, err := s.db.Exec(`INSERT INTO words
-		(id, word, phonetic, audio_url, definitions, examples, inflections, synonyms, advanced, tags, notes,
+		(id, word, phonetic, audio_url, definitions, ecdict_defs, examples, inflections, synonyms, advanced, tags, notes,
 		 review_count, last_reviewed_at, next_review_at, stability, difficulty, state, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		w.ID, w.Word, w.Phonetic, w.AudioURL,
-		jsonArr(w.Definitions), jsonArr(w.Examples), jsonArr(w.Inflections),
+		jsonArr(w.Definitions), jsonArr(w.ECDictDefs), jsonArr(w.Examples), jsonArr(w.Inflections),
 		jsonArr(w.Synonyms), jsonArr(w.Advanced), jsonArr(w.Tags),
 		w.Notes, w.ReviewCount,
 		fmtTime(w.LastReviewedAt), fmtTime(w.NextReviewAt),
@@ -98,7 +98,7 @@ func (s *sqliteWordStore) Add(w model.Word) error {
 
 func (s *sqliteWordStore) Get(idPrefix string) (*model.Word, error) {
 	// Try exact ID match first.
-	w, err := scanWord(s.db.QueryRow(`SELECT id, word, phonetic, audio_url, definitions, examples, inflections,
+	w, err := scanWord(s.db.QueryRow(`SELECT id, word, phonetic, audio_url, definitions, ecdict_defs, examples, inflections,
 		synonyms, advanced, tags, notes, review_count,
 		last_reviewed_at, next_review_at, stability, difficulty, state,
 		created_at, updated_at FROM words WHERE id = ? OR word = ?`,
@@ -111,7 +111,7 @@ func (s *sqliteWordStore) Get(idPrefix string) (*model.Word, error) {
 	}
 
 	// Try prefix match.
-	rows, err := s.db.Query(`SELECT id, word, phonetic, audio_url, definitions, examples, inflections,
+	rows, err := s.db.Query(`SELECT id, word, phonetic, audio_url, definitions, ecdict_defs, examples, inflections,
 		synonyms, advanced, tags, notes, review_count,
 		last_reviewed_at, next_review_at, stability, difficulty, state,
 		created_at, updated_at FROM words WHERE id LIKE ? OR word LIKE ? LIMIT 1`,
@@ -132,12 +132,12 @@ func (s *sqliteWordStore) Get(idPrefix string) (*model.Word, error) {
 }
 
 func (s *sqliteWordStore) Update(w model.Word) error {
-	result, err := s.db.Exec(`UPDATE words SET word=?, phonetic=?, audio_url=?, definitions=?, examples=?, inflections=?,
+	result, err := s.db.Exec(`UPDATE words SET word=?, phonetic=?, audio_url=?, definitions=?, ecdict_defs=?, examples=?, inflections=?,
 		synonyms=?, advanced=?, tags=?, notes=?, review_count=?,
 		last_reviewed_at=?, next_review_at=?, stability=?, difficulty=?, state=?,
 		updated_at=? WHERE id=?`,
 		w.Word, w.Phonetic, w.AudioURL,
-		jsonArr(w.Definitions), jsonArr(w.Examples), jsonArr(w.Inflections),
+		jsonArr(w.Definitions), jsonArr(w.ECDictDefs), jsonArr(w.Examples), jsonArr(w.Inflections),
 		jsonArr(w.Synonyms), jsonArr(w.Advanced), jsonArr(w.Tags),
 		w.Notes, w.ReviewCount,
 		fmtTime(w.LastReviewedAt), fmtTime(w.NextReviewAt),
@@ -177,7 +177,7 @@ func (s *sqliteWordStore) Search(keywords []string, tags []string) ([]model.Word
 		// FTS returned nothing — fall back to LIKE for substring matching.
 	}
 
-	query := `SELECT id, word, phonetic, audio_url, definitions, examples, inflections,
+	query := `SELECT id, word, phonetic, audio_url, definitions, ecdict_defs, examples, inflections,
 		synonyms, advanced, tags, notes, review_count,
 		last_reviewed_at, next_review_at, stability, difficulty, state,
 		created_at, updated_at FROM words WHERE 1=1`
@@ -218,7 +218,7 @@ func (s *sqliteWordStore) ftsSearch(keywords, tags []string) ([]model.Word, bool
 	}
 	ftsQuery := strings.Join(ftsTerms, " ")
 
-	sql := `SELECT w.id, w.word, w.phonetic, w.definitions, w.examples, w.inflections,
+	sql := `SELECT w.id, w.word, w.phonetic, w.audio_url, w.definitions, w.ecdict_defs, w.examples, w.inflections,
 		w.synonyms, w.advanced, w.tags, w.notes, w.review_count,
 		w.last_reviewed_at, w.next_review_at, w.stability, w.difficulty, w.state,
 		w.created_at, w.updated_at
@@ -291,11 +291,11 @@ func (s *sqliteWordStore) Count() (int, error) {
 
 func scanWord(row interface{ Scan(...interface{}) error }) (model.Word, error) {
 	var w model.Word
-	var defs, exs, infs, syns, advs, tgs string
+	var defs, ecDefs, exs, infs, syns, advs, tgs string
 	var lra, nra, ca, ua string
 	err := row.Scan(
 		&w.ID, &w.Word, &w.Phonetic, &w.AudioURL,
-		&defs, &exs, &infs, &syns, &advs, &tgs,
+		&defs, &ecDefs, &exs, &infs, &syns, &advs, &tgs,
 		&w.Notes,
 		&w.ReviewCount, &lra, &nra,
 		&w.Stability, &w.Difficulty, &w.State,
@@ -305,6 +305,7 @@ func scanWord(row interface{ Scan(...interface{}) error }) (model.Word, error) {
 		return w, err
 	}
 	json.Unmarshal([]byte(defs), &w.Definitions)
+	json.Unmarshal([]byte(ecDefs), &w.ECDictDefs)
 	json.Unmarshal([]byte(exs), &w.Examples)
 	json.Unmarshal([]byte(infs), &w.Inflections)
 	json.Unmarshal([]byte(syns), &w.Synonyms)
@@ -332,7 +333,7 @@ func scanWords(rows *sql.Rows) ([]model.Word, error) {
 func insertWord(stmt *sql.Stmt, w model.Word) error {
 	_, err := stmt.Exec(
 		w.ID, w.Word, w.Phonetic, w.AudioURL,
-		jsonArr(w.Definitions), jsonArr(w.Examples), jsonArr(w.Inflections),
+		jsonArr(w.Definitions), jsonArr(w.ECDictDefs), jsonArr(w.Examples), jsonArr(w.Inflections),
 		jsonArr(w.Synonyms), jsonArr(w.Advanced), jsonArr(w.Tags),
 		w.Notes, w.ReviewCount,
 		fmtTime(w.LastReviewedAt), fmtTime(w.NextReviewAt),

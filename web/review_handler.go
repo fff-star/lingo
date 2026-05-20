@@ -68,7 +68,7 @@ func (s *Server) findNextDue() (*nextDue, bool) {
 		w := words[0]
 		return &nextDue{
 			kind: "word", id: w.ID, text: w.Word,
-			def:         formatWordDefs(w.Definitions),
+			def:         formatWordDefs(w.Definitions, w.ECDictDefs),
 			inflections: formatInflections(w.Inflections),
 			audioURL:    w.AudioURL,
 		}, true
@@ -259,17 +259,31 @@ func maxBar(a, b int) int {
 	return b
 }
 
-func formatWordDefs(defs []model.Definition) string {
-	if len(defs) == 0 {
+func formatWordDefs(defs, ecDefs []model.Definition) string {
+	if len(defs) == 0 && len(ecDefs) == 0 {
 		return ""
 	}
 	var b strings.Builder
+	first := true
+	// ECDICT Chinese definitions (all).
+	for _, d := range ecDefs {
+		if !first {
+			b.WriteByte('\n')
+		}
+		if d.Pos != "" {
+			fmt.Fprintf(&b, "[%s] %s", d.Pos, d.Meaning)
+		} else {
+			b.WriteString(d.Meaning)
+		}
+		first = false
+	}
+	// MW English definitions (first 5).
 	n := len(defs)
 	if n > 5 {
 		n = 5
 	}
 	for i := 0; i < n; i++ {
-		if i > 0 {
+		if !first {
 			b.WriteByte('\n')
 		}
 		pos := defs[i].Pos
@@ -277,6 +291,7 @@ func formatWordDefs(defs []model.Definition) string {
 			pos = "-"
 		}
 		fmt.Fprintf(&b, "[%s] %s", pos, defs[i].Meaning)
+		first = false
 	}
 	return b.String()
 }

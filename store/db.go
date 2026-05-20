@@ -41,6 +41,7 @@ func CreateTables(db *sql.DB) error {
 		word TEXT NOT NULL COLLATE NOCASE,
 		phonetic TEXT NOT NULL DEFAULT '',
 		definitions TEXT NOT NULL DEFAULT '[]',
+		ecdict_defs TEXT NOT NULL DEFAULT '[]',
 		examples TEXT NOT NULL DEFAULT '[]',
 		inflections TEXT NOT NULL DEFAULT '[]',
 		synonyms TEXT NOT NULL DEFAULT '[]',
@@ -144,7 +145,7 @@ func CreateTables(db *sql.DB) error {
 
 	-- FTS5 virtual tables for full-text search
 	CREATE VIRTUAL TABLE IF NOT EXISTS words_fts USING fts5(
-		word, definitions, synonyms, advanced, notes,
+		word, definitions, ecdict_defs, synonyms, advanced, notes,
 		content=words, content_rowid=rowid
 	);
 	CREATE VIRTUAL TABLE IF NOT EXISTS phrases_fts USING fts5(
@@ -169,22 +170,22 @@ func CreateTables(db *sql.DB) error {
 	-- FTS sync triggers for words
 	DROP TRIGGER IF EXISTS words_fts_insert;
 	CREATE TRIGGER words_fts_insert AFTER INSERT ON words BEGIN
-		INSERT INTO words_fts(rowid, word, definitions, synonyms, advanced, notes)
-		VALUES (new.rowid, new.word, new.definitions, new.synonyms, new.advanced, new.notes);
+		INSERT INTO words_fts(rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+		VALUES (new.rowid, new.word, new.definitions, new.ecdict_defs, new.synonyms, new.advanced, new.notes);
 	END;
 
 	DROP TRIGGER IF EXISTS words_fts_delete;
 	CREATE TRIGGER words_fts_delete AFTER DELETE ON words BEGIN
-		INSERT INTO words_fts(words_fts, rowid, word, definitions, synonyms, advanced, notes)
-		VALUES ('delete', old.rowid, old.word, old.definitions, old.synonyms, old.advanced, old.notes);
+		INSERT INTO words_fts(words_fts, rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+		VALUES ('delete', old.rowid, old.word, old.definitions, old.ecdict_defs, old.synonyms, old.advanced, old.notes);
 	END;
 
 	DROP TRIGGER IF EXISTS words_fts_update;
 	CREATE TRIGGER words_fts_update AFTER UPDATE ON words BEGIN
-		INSERT INTO words_fts(words_fts, rowid, word, definitions, synonyms, advanced, notes)
-		VALUES ('delete', old.rowid, old.word, old.definitions, old.synonyms, old.advanced, old.notes);
-		INSERT INTO words_fts(rowid, word, definitions, synonyms, advanced, notes)
-		VALUES (new.rowid, new.word, new.definitions, new.synonyms, new.advanced, new.notes);
+		INSERT INTO words_fts(words_fts, rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+		VALUES ('delete', old.rowid, old.word, old.definitions, old.ecdict_defs, old.synonyms, old.advanced, old.notes);
+		INSERT INTO words_fts(rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+		VALUES (new.rowid, new.word, new.definitions, new.ecdict_defs, new.synonyms, new.advanced, new.notes);
 	END;
 
 	-- FTS sync triggers for phrases
@@ -294,6 +295,11 @@ func runMigrations(db *sql.DB) error {
 			return fmt.Errorf("migration v2: %w", err)
 		}
 	}
+	if version < 3 {
+		if err := migrateV3(db); err != nil {
+			return fmt.Errorf("migration v3: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -349,6 +355,68 @@ func migrateV2(db *sql.DB) error {
 	}
 	if _, err := db.Exec("INSERT INTO schema_version(version) VALUES (2)"); err != nil {
 		return fmt.Errorf("record v2: %w", err)
+	}
+	return nil
+}
+
+func migrateV3(db *sql.DB) error {
+	// Add ecdict_defs column if it doesn't exist.
+	cols, err := db.Query("PRAGMA table_info(words)")
+	if err != nil {
+		return fmt.Errorf("migration v3: %w", err)
+	}
+	hasECDict := false
+	for cols.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var defaultVal *string
+		var pk int
+		cols.Scan(&cid, &name, &colType, &notNull, &defaultVal, &pk)
+		if name == "ecdict_defs" {
+			hasECDict = true
+			break
+		}
+	}
+	cols.Close()
+	if !hasECDict {
+		if _, err := db.Exec("ALTER TABLE words ADD COLUMN ecdict_defs TEXT NOT NULL DEFAULT '[]'"); err != nil {
+			return fmt.Errorf("add ecdict_defs: %w", err)
+		}
+	}
+	// Recreate FTS to include the new ecdict_defs column.
+	if _, err := db.Exec(`
+		DROP TRIGGER IF EXISTS words_fts_insert;
+		DROP TRIGGER IF EXISTS words_fts_delete;
+		DROP TRIGGER IF EXISTS words_fts_update;
+		DROP TABLE IF EXISTS words_fts;
+		CREATE VIRTUAL TABLE words_fts USING fts5(
+			word, definitions, ecdict_defs, synonyms, advanced, notes,
+			content=words, content_rowid=rowid
+		);
+		CREATE TRIGGER words_fts_insert AFTER INSERT ON words BEGIN
+			INSERT INTO words_fts(rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+			VALUES (new.rowid, new.word, new.definitions, new.ecdict_defs, new.synonyms, new.advanced, new.notes);
+		END;
+		CREATE TRIGGER words_fts_delete AFTER DELETE ON words BEGIN
+			INSERT INTO words_fts(words_fts, rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+			VALUES ('delete', old.rowid, old.word, old.definitions, old.ecdict_defs, old.synonyms, old.advanced, old.notes);
+		END;
+		CREATE TRIGGER words_fts_update AFTER UPDATE ON words BEGIN
+			INSERT INTO words_fts(words_fts, rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+			VALUES ('delete', old.rowid, old.word, old.definitions, old.ecdict_defs, old.synonyms, old.advanced, old.notes);
+			INSERT INTO words_fts(rowid, word, definitions, ecdict_defs, synonyms, advanced, notes)
+			VALUES (new.rowid, new.word, new.definitions, new.ecdict_defs, new.synonyms, new.advanced, new.notes);
+		END;
+	`); err != nil {
+		return fmt.Errorf("rebuild words_fts v3: %w", err)
+	}
+	// Repopulate FTS from content table.
+	if _, err := db.Exec("INSERT INTO words_fts(words_fts) VALUES('rebuild')"); err != nil {
+		return fmt.Errorf("repopulate words_fts v3: %w", err)
+	}
+	if _, err := db.Exec("INSERT INTO schema_version(version) VALUES (3)"); err != nil {
+		return fmt.Errorf("record v3: %w", err)
 	}
 	return nil
 }

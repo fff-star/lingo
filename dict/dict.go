@@ -1,55 +1,59 @@
 package dict
 
 import (
-	"fmt"
-
 	"lingo/model"
 )
 
 // WordInfo is the result of a dictionary lookup.
 type WordInfo struct {
-	Word        string
-	Phonetic    string
-	AudioURL    string
-	Definitions []model.Definition
-	Examples    []string
-	Inflections []model.Inflection
+	Word           string
+	Phonetic       string
+	AudioURL       string
+	Definitions    []model.Definition // MW English definitions
+	ECDefinitions  []model.Definition // ECDICT Chinese definitions
+	Examples       []string
+	Inflections    []model.Inflection
 }
 
-// Lookup queries the Merriam-Webster Collegiate Dictionary for a word.
-// Requires MW_API_KEY environment variable.
+// Lookup queries Merriam-Webster and ECDICT for a word.
+// MW phonetic/audio takes priority; ECDICT phonetic is fallback.
+// Requires MW_API_KEY environment variable (MW) and ECDICT_DB_PATH (ECDICT).
 func Lookup(word string) (*WordInfo, error) {
-	raw, err := LookupMW(word)
-	if err != nil {
-		return nil, err
+	info := &WordInfo{Word: word}
+
+	// 1. MW lookup (English definitions, phonetic, audio).
+	raw, mwErr := LookupMW(word)
+	if mwErr == nil {
+		info.Word = raw.Headword
+		if len(raw.Prons) > 0 {
+			info.Phonetic = "/" + raw.Prons[0] + "/"
+		}
+		if raw.AudioFile != "" {
+			info.AudioURL = mwAudioURL(raw.AudioFile)
+		}
+		for _, d := range raw.ShortDefs {
+			info.Definitions = append(info.Definitions, model.Definition{
+				Pos:     raw.Functional,
+				Meaning: d,
+			})
+		}
+		info.Inflections = raw.Inflections
 	}
 
-	info := &WordInfo{
-		Word:        raw.Headword,
-		Inflections: raw.Inflections,
+	// 2. ECDICT lookup (Chinese definitions, best-effort).
+	if ec, ecErr := LookupECDICT(word); ecErr == nil {
+		info.ECDefinitions = ec.Definitions
+		if info.Phonetic == "" && ec.Phonetic != "" {
+			info.Phonetic = ec.Phonetic
+		}
 	}
 
-	// Phonetic from MW pronunciation.
-	if len(raw.Prons) > 0 {
-		info.Phonetic = "/" + raw.Prons[0] + "/"
+	// 3. Must have at least some data.
+	if mwErr != nil && len(info.ECDefinitions) == 0 {
+		return nil, mwErr
 	}
-
-	// Audio URL from MW sound file.
-	if raw.AudioFile != "" {
-		info.AudioURL = mwAudioURL(raw.AudioFile)
-	}
-
-	// Definitions grouped by part of speech.
-	for _, d := range raw.ShortDefs {
-		info.Definitions = append(info.Definitions, model.Definition{
-			Pos:     raw.Functional,
-			Meaning: d,
-		})
-	}
-
 	if info.Word == "" {
-		return nil, fmt.Errorf("word not found")
+		info.Word = word
 	}
-
 	return info, nil
 }

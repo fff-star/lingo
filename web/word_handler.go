@@ -386,6 +386,7 @@ func (s *Server) handleWordQuickAdd(w http.ResponseWriter, r *http.Request) {
 		wm.Phonetic = info.Phonetic
 		wm.AudioURL = info.AudioURL
 		wm.Definitions = info.Definitions
+			wm.ECDictDefs = info.ECDefinitions
 		wm.Examples = info.Examples
 		for _, inf := range info.Inflections {
 			if inf.Form == "synonym" {
@@ -434,8 +435,18 @@ func (s *Server) handleWordCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if match != nil {
-		defs := make([]string, 0, len(match.Definitions))
-		for _, d := range match.Definitions {
+		defs := make([]string, 0, len(match.ECDictDefs)+len(match.Definitions))
+		// ECDICT Chinese definitions (all).
+		for _, d := range match.ECDictDefs {
+			if d.Meaning != "" {
+				defs = append(defs, d.Meaning)
+			}
+		}
+		// MW English definitions (first 5).
+		for i, d := range match.Definitions {
+			if i >= 5 {
+				break
+			}
 			label := d.Meaning
 			if d.Pos != "" {
 				label = "[" + d.Pos + "] " + d.Meaning
@@ -454,13 +465,23 @@ func (s *Server) handleWordCheck(w http.ResponseWriter, r *http.Request) {
 
 	// Not in local vocabulary — try dictionary API.
 	info, err := dict.Lookup(word)
-	if err != nil || len(info.Definitions) == 0 {
+	if err != nil || (len(info.Definitions) == 0 && len(info.ECDefinitions) == 0) {
 		fmt.Fprint(w, `{"found":false}`)
 		return
 	}
 
-	defs := make([]string, 0, len(info.Definitions))
-	for _, d := range info.Definitions {
+	defs := make([]string, 0, len(info.ECDefinitions)+len(info.Definitions))
+	// ECDICT Chinese definitions (all).
+	for _, d := range info.ECDefinitions {
+		if d.Meaning != "" {
+			defs = append(defs, d.Meaning)
+		}
+	}
+	// MW English definitions (first 5).
+	for i, d := range info.Definitions {
+		if i >= 5 {
+			break
+		}
 		label := d.Meaning
 		if d.Pos != "" {
 			label = "[" + d.Pos + "] " + d.Meaning

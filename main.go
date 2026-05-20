@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"lingo/cli"
+	"lingo/dict"
 	"lingo/store"
 	"lingo/web"
 )
@@ -54,6 +55,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// Initialize ECDICT (optional English-Chinese dictionary).
+	ecdictPath := os.Getenv("ECDICT_DB_PATH")
+	if ecdictPath == "" {
+		ecdictPath = filepath.Join(dataDir, "ecdict.db")
+	}
+	if err := dict.InitECDICT(ecdictPath); err != nil {
+		fmt.Fprintf(os.Stderr, "ecdict: %v (Chinese definitions unavailable)\n", err)
+	}
 
 	ws := store.NewWordStore(db)
 	ps := store.NewPhraseStore(db)

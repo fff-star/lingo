@@ -18,6 +18,7 @@ type Word struct {
 	Phonetic       string       `json:"phonetic"`
 	AudioURL       string       `json:"audio_url,omitempty"`
 	Definitions    []Definition `json:"definitions"`
+	ECDictDefs     []Definition `json:"ecdict_defs"`
 	Examples       []string     `json:"examples"`
 	Inflections    []Inflection `json:"inflections"`
 	Synonyms       []string     `json:"synonyms"`

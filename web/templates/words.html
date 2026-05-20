@@ -3,6 +3,11 @@
 <h1>Words</h1>
 
 <div class="search-bar">
+  {{if .Detail}}
+  <form action="/words" method="GET" style="flex:1;display:flex;gap:0.5em">
+    <input name="q" type="search" placeholder="Search or look up a word..." style="flex:1">
+  </form>
+  {{else}}
   <form hx-get="/words" hx-target="#word-list" hx-trigger="change from:#word-tag, search from:#word-search delay:400ms" style="flex:1;display:flex;gap:0.5em">
     <input id="word-search" name="q" type="search" placeholder="Search or look up a word..." value="{{.Query}}" data-fuzzy-target="#word-list tbody" style="flex:1">
     <select id="word-tag" name="tag" style="width:150px">
@@ -12,6 +17,7 @@
       {{end}}
     </select>
   </form>
+  {{end}}
 </div>
 {{end}}
 
@@ -31,6 +37,15 @@
       </div>
       {{if .Detail.Phonetic}}<p style="font-size:var(--m)"><code>{{.Detail.Phonetic}}</code>{{if .Detail.AudioURL}} <a href="#" onclick="new Audio('{{.Detail.AudioURL}}').play();return false" style="text-decoration:none">🔊</a>{{end}}</p>{{end}}
       <p><small style="opacity:0.5">ID: {{.Detail.ID}}</small></p>
+
+      {{if .Detail.ECDictDefs}}
+      <h4>Chinese Definitions</h4>
+      <ul>
+        {{range .Detail.ECDictDefs}}
+        <li>{{if .Pos}}<strong>{{.Pos}}</strong> {{end}}{{.Meaning}}</li>
+        {{end}}
+      </ul>
+      {{end}}
 
       {{if .Detail.Definitions}}
       <h4>Definitions</h4>
@@ -115,6 +130,14 @@
         </div>
       </div>
       {{if .LookupWord.Phonetic}}<p style="font-size:var(--m)"><code>{{.LookupWord.Phonetic}}</code>{{if .LookupWord.AudioURL}} <a href="#" onclick="new Audio('{{.LookupWord.AudioURL}}').play();return false" style="text-decoration:none">🔊</a>{{end}}</p>{{end}}
+      {{if .LookupWord.ECDefinitions}}
+      <h4>Chinese Definitions</h4>
+      <ul>
+        {{range .LookupWord.ECDefinitions}}
+        <li>{{if .Pos}}<strong>{{.Pos}}</strong> {{end}}{{.Meaning}}</li>
+        {{end}}
+      </ul>
+      {{end}}
       {{if .LookupWord.Definitions}}
       <h4>Definitions</h4>
       <ul>
@@ -149,10 +172,10 @@
       <thead><tr><th>Word</th><th>Tags</th><th>Definition</th></tr></thead>
       <tbody>
       {{range .Words}}
-      <tr data-search="{{range .Synonyms}}{{.}} {{end}}{{range .Advanced}}{{.}} {{end}}{{range .Examples}}{{.}} {{end}}">
+      <tr data-search="{{range .ECDictDefs}}{{.Meaning}} {{end}}{{range .Synonyms}}{{.}} {{end}}{{range .Advanced}}{{.}} {{end}}{{range .Examples}}{{.}} {{end}}">
         <td><a href="/words/{{.ID}}">{{.Word}}</a></td>
         <td>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</td>
-        <td style="opacity:0.6">{{if .Definitions}}{{(index .Definitions 0).Meaning}}{{end}}</td>
+        <td style="opacity:0.6">{{if .ECDictDefs}}{{(index .ECDictDefs 0).Meaning}}{{else if .Definitions}}{{(index .Definitions 0).Meaning}}{{end}}</td>
       </tr>
       {{end}}
       </tbody>
