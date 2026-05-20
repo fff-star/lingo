@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -66,7 +67,7 @@ func ChatCompletion(cfg *Config, messages []Message) (string, error) {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := cfg.BaseURL + "/v1/chat/completions"
+	url := cfg.BaseURL + "/chat/completions"
 	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
@@ -89,13 +90,14 @@ func ChatCompletion(cfg *Config, messages []Message) (string, error) {
 
 	fmt.Fprintf(os.Stderr, "→ Response headers received after %v (status: %d), reading body...\n", time.Since(start).Round(time.Second), resp.StatusCode)
 
+	pr := &progressReader{r: resp.Body, start: start}
 	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(resp.Body); err != nil {
+	if _, err := io.Copy(&buf, pr); err != nil {
 		return "", fmt.Errorf("read response (after %v): %w", time.Since(start).Round(time.Second), err)
 	}
 	elapsed := time.Since(start).Round(time.Second)
 	responseSize := buf.Len()
-	fmt.Fprintf(os.Stderr, "→ Response received (%d bytes) after %v, parsing...\n", responseSize, elapsed)
+	fmt.Fprintf(os.Stderr, "→ Response received (%d bytes, %d chunks) after %v, parsing...\n", responseSize, pr.chunks, elapsed)
 
 	var result chatResponse
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -113,4 +115,25 @@ func ChatCompletion(cfg *Config, messages []Message) (string, error) {
 	}
 
 	return result.Choices[0].Message.Content, nil
+}
+
+// progressReader wraps a reader and periodically reports read progress to stderr.
+type progressReader struct {
+	r       io.Reader
+	start   time.Time
+	read    int64
+	chunks  int
+	lastLog time.Time
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.r.Read(p)
+	pr.read += int64(n)
+	pr.chunks++
+	if n > 0 && time.Since(pr.lastLog) > 3*time.Second {
+		fmt.Fprintf(os.Stderr, "→ Reading... %d bytes in %d chunks after %v\n",
+			pr.read, pr.chunks, time.Since(pr.start).Round(time.Second))
+		pr.lastLog = time.Now()
+	}
+	return n, err
 }

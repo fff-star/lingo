@@ -98,7 +98,7 @@
       <h4>Words ({{len .Detail.AIAnalysis.Words}})</h4>
       {{range .Detail.AIAnalysis.Words}}
       <div class="ai-block">
-        <strong>{{.Word}}</strong>
+        <strong><span class="word-clickable">{{.Word}}</span></strong>
         {{if .Definitions}}<br>{{range .Definitions}}<span class="tag">{{.Pos}}</span> {{.Meaning}}<br>{{end}}{{end}}
         {{if .Example}}<em style="opacity:0.7">ex: {{.Example}}</em>{{end}}
         {{if .Synonyms}}<br>Synonyms: {{join .Synonyms ", "}}{{end}}

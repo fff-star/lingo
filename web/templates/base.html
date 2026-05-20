@@ -60,7 +60,7 @@ function processWithAI(url) {
 
   const es = new EventSource(url)
   es.addEventListener('progress', e => {
-    document.getElementById('process-msg').textContent = e.data
+    status.innerHTML = '<span style="opacity:0.6">' + e.data + '</span>'
   })
   es.addEventListener('done', e => { es.close(); window.location = e.data })
   es.addEventListener('error', e => {

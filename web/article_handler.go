@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -310,13 +311,39 @@ func (s *Server) handleArticleProcessSSE(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	send("progress", "Connected to LLM, sending request (this may take several minutes for long articles)...")
+	send("progress", "Connected to LLM, generating response (this may take several minutes)...")
 
-	items, err := llm.ProcessArticle(cfg, a.Content, a.Title)
-	if err != nil {
-		send("error", "LLM processing failed: "+err.Error())
+	start := time.Now()
+	type result struct {
+		items *llm.ExtractedItems
+		err   error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		items, err := llm.ProcessArticle(cfg, a.Content, a.Title)
+		ch <- result{items, err}
+	}()
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	var res result
+loop:
+	for {
+		select {
+		case res = <-ch:
+			break loop
+		case <-ticker.C:
+			elapsed := time.Since(start).Round(time.Second)
+			send("progress", fmt.Sprintf("LLM is generating response... (%v elapsed, please wait)", elapsed))
+		}
+	}
+
+	if res.err != nil {
+		send("error", "LLM processing failed: "+res.err.Error())
 		return
 	}
+	items := res.items
 
 	send("progress", "Response received, saving analysis...")
 

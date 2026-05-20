@@ -15,20 +15,18 @@ import (
 
 func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
 	type dueItem struct {
-		ID   string
-		Text string
-		Type string
-		Def  string
+		ID      string
+		Text    string
+		Type    string
+		Def     string
+		AudioURL string
 	}
 
 	var due []dueItem
 	dueWords, _ := s.Words.LoadDue()
 	for _, w := range dueWords {
-		def := ""
-		if len(w.Definitions) > 0 {
-			def = w.Definitions[0].Meaning
-		}
-		due = append(due, dueItem{ID: w.ID, Text: w.Word, Type: "word", Def: def})
+		def := formatWordDefs(w.Definitions, w.ECDictDefs)
+		due = append(due, dueItem{ID: w.ID, Text: w.Word, Type: "word", Def: def, AudioURL: w.AudioURL})
 	}
 
 	duePhrases, _ := s.Phrases.LoadDue()
@@ -56,6 +54,7 @@ type nextDue struct {
 	kind        string
 	id          string
 	text        string
+	phonetic    string
 	def         string
 	inflections string
 	audioURL    string
@@ -67,7 +66,10 @@ func (s *Server) findNextDue() (*nextDue, bool) {
 	if len(words) > 0 {
 		w := words[0]
 		return &nextDue{
-			kind: "word", id: w.ID, text: w.Word,
+			kind:        "word",
+			id:          w.ID,
+			text:        w.Word,
+			phonetic:    w.Phonetic,
 			def:         formatWordDefs(w.Definitions, w.ECDictDefs),
 			inflections: formatInflections(w.Inflections),
 			audioURL:    w.AudioURL,
@@ -76,7 +78,7 @@ func (s *Server) findNextDue() (*nextDue, bool) {
 	phrases, _ := s.Phrases.LoadDue()
 	if len(phrases) > 0 {
 		p := phrases[0]
-		return &nextDue{"phrase", p.ID, p.Phrase, p.Definition, "", ""}, true
+		return &nextDue{"phrase", p.ID, p.Phrase, "", p.Definition, "", ""}, true
 	}
 	return nil, false
 }
@@ -102,8 +104,11 @@ func (s *Server) renderReviewCard(w http.ResponseWriter, feedback string) {
 		fmt.Fprintf(w, `<p style="text-align:center;color:var(--pico-muted-color)">%s</p>`, feedback)
 	}
 	fmt.Fprintf(w, `<div class="front" id="front-%s">%s</div>`, item.id, html.EscapeString(item.text))
+	if item.phonetic != "" {
+		fmt.Fprintf(w, `<p style="text-align:center;margin-top:0.3em;opacity:0.7;font-size:0.95em">%s</p>`, html.EscapeString(item.phonetic))
+	}
 	if item.audioURL != "" {
-		fmt.Fprintf(w, `<p style="text-align:center;margin-top:0.5em"><a href="#" onclick="new Audio('%s').play();return false" style="text-decoration:none" title="Play pronunciation">🔊</a></p>`, html.EscapeString(item.audioURL))
+		fmt.Fprintf(w, `<p style="text-align:center;margin-top:0.3em"><a href="#" onclick="new Audio('%s').play();return false" style="text-decoration:none" title="Play pronunciation">🔊</a></p>`, html.EscapeString(item.audioURL))
 	}
 	fmt.Fprintf(w, `<button id="show-%s" class="secondary" style="width:100%%;margin-top:1rem" onclick="document.getElementById('back-%s').hidden=false;this.hidden=true">Show Answer</button>`, item.id, item.id)
 	fmt.Fprintf(w, `<div class="back" id="back-%s" hidden>`, item.id)

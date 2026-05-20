@@ -39,8 +39,8 @@
   {{range .Due}}
   <tr>
     <td><span class="tag">{{.Type}}</span></td>
-    <td>{{.Text}}</td>
-    <td style="opacity:0.6">{{.Def}}</td>
+    <td>{{.Text}}{{if .AudioURL}} <a href="#" onclick="new Audio('{{.AudioURL}}').play();return false" style="text-decoration:none" title="Play pronunciation">🔊</a>{{end}}</td>
+    <td style="opacity:0.75;white-space:pre-line;font-size:0.85em">{{.Def}}</td>
   </tr>
   {{end}}
   </tbody>

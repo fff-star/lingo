@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -255,13 +256,39 @@ func (s *Server) handleCompositionProcessSSE(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	send("progress", "Connected to LLM, sending request (this may take several minutes for long texts)...")
+	send("progress", "Connected to LLM, generating response (this may take several minutes)...")
 
-	items, err := llm.AnalyzeComposition(cfg, comp.Content, comp.Title, comp.Topic)
-	if err != nil {
-		send("error", "AI analysis failed: "+err.Error())
+	start := time.Now()
+	type result struct {
+		items *llm.ExtractedItems
+		err   error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		items, err := llm.AnalyzeComposition(cfg, comp.Content, comp.Title, comp.Topic)
+		ch <- result{items, err}
+	}()
+
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	var res result
+loop:
+	for {
+		select {
+		case res = <-ch:
+			break loop
+		case <-ticker.C:
+			elapsed := time.Since(start).Round(time.Second)
+			send("progress", fmt.Sprintf("LLM is generating response... (%v elapsed, please wait)", elapsed))
+		}
+	}
+
+	if res.err != nil {
+		send("error", "AI analysis failed: "+res.err.Error())
 		return
 	}
+	items := res.items
 
 	send("progress", "Response received, saving analysis...")
 

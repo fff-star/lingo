@@ -83,7 +83,7 @@ Skip: basic function words, common A1–B1 words, pronouns, articles, everyday c
 For each word:
 - "word": the headword (lowercase unless proper noun)
 - "definitions": array of { "pos": "n./adj./v./adv.", "meaning": "definition IN CHINESE" }
-- "example": ONE original sentence from the article containing this word
+- "example": ONE original sentence from the article containing this word (must be over 15 words)
 - "synonyms": 1–3 near-synonyms in English (can be empty array)
 - "notes": usage tip or collocation note IN CHINESE (can be empty string)
 
@@ -348,7 +348,7 @@ Pick words that are:
 For each word:
 - "word": the headword
 - "definitions": array of { "pos": "n./adj./v./adv.", "meaning": "definition IN CHINESE" }
-- "example": the sentence from the composition containing this word
+- "example": the sentence from the composition containing this word (must be over 15 words)
 - "synonyms": 1–3 alternative words (can be empty array)
 - "notes": usage tip or improvement suggestion IN CHINESE (can be empty string)
 

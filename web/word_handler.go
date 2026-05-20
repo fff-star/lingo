@@ -68,9 +68,12 @@ func (s *Server) handleWordDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allTags, _ := s.Words.GetAllTags()
+
 	s.render(w, r, "words.html", map[string]interface{}{
-		"Title":  word.Word,
-		"Detail": word,
+		"Title":   word.Word,
+		"Detail":  word,
+		"AllTags": allTags,
 	})
 }
 
@@ -265,11 +268,13 @@ func (s *Server) handleWordUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allTags, _ := s.Words.GetAllTags()
 	isHtmx := r.Header.Get("HX-Request") == "true"
 	s.render(w, r, "words.html", map[string]interface{}{
-		"Title":  wm.Word,
-		"Detail": wm,
-		"Htmx":   isHtmx,
+		"Title":   wm.Word,
+		"Detail":  wm,
+		"AllTags": allTags,
+		"Htmx":    isHtmx,
 	})
 }
 
