@@ -6,7 +6,7 @@ Personal language material manager — vocabulary, phrases, sentences, articles,
 
 - **5 material types**: words, phrases, sentences, articles, compositions — independent storage, unified tag system
 - **FSRS-5 spaced repetition**: same algorithm as Anki, 4-level rating, adaptive intervals for words and phrases
-- **Dictionary lookup**: Merriam-Webster Collegiate Dictionary API for definitions, phonetics, audio pronunciation, inflections
+- **Dictionary lookup**: Merriam-Webster Collegiate Dictionary API for English definitions, phonetics, audio pronunciation, inflections; ECDICT SQLite database for offline Chinese translations (~770k entries)
 - **LLM integration**: DeepSeek for article content extraction, composition analysis (grammar errors + model essay), word inflection suggestions
 - **Built-in fuzzy search**: CLI interactive picker with real-time filtering; web client-side fuzzy filter with instant feedback
 - **Review streak tracking**: daily consecutive review day counter with streak history
@@ -33,6 +33,8 @@ export DEEPSEEK_API_KEY="sk-..."
 # Optional
 export DEEPSEEK_BASE_URL="https://api.deepseek.com"   # default
 export DEEPSEEK_MODEL="deepseek-chat"                  # default
+export ECDICT_DB_PATH="/path/to/ecdict.db"              # English-Chinese dictionary (download separately)
+export MW_API_KEY="..."                                 # Merriam-Webster Collegiate API key
 ```
 
 Dictionary lookup and all other features work without any API keys.
@@ -115,7 +117,7 @@ Features: browse all types, fuzzy search, tag filtering, review cards with keybo
 ### Data check
 
 ```bash
-./lingo check                           # orphan tags, duplicates, empty fields
+./lingo check                           # data integrity: orphan tags, duplicates, empty fields, cross-type consistency
 ```
 
 ## Data
@@ -145,7 +147,7 @@ The algorithm adapts stability and difficulty per card, scheduling reviews at op
 
 ## Tech
 
-Go standard library mostly — `net/http`, `html/template`. SQLite via `modernc.org/sqlite` (pure Go, no CGO). Terminal fuzzy picker uses `golang.org/x/term`. Frontend uses Pico.css, htmx 2.0, and marked.js — all local assets, fully offline. LLM integration via DeepSeek API (OpenAI-compatible).
+Go standard library mostly — `net/http`, `html/template`. SQLite via `modernc.org/sqlite` (pure Go, no CGO). Terminal fuzzy picker uses `golang.org/x/term`. Frontend uses Pico.css, htmx 2.0, and marked.js — all local assets, fully offline. Dual dictionary: Merriam-Webster API (English) + ECDICT SQLite (English-Chinese, offline). LLM integration via DeepSeek API (OpenAI-compatible).
 
 ## Build matrix
 
