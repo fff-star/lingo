@@ -17,7 +17,9 @@ var (
 
 func NewID(prefix string) string {
 	b := make([]byte, 6)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand.Read failed: " + err.Error())
+	}
 	return prefix + "_" + hex.EncodeToString(b)
 }
 

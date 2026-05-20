@@ -113,6 +113,11 @@ func compAddInteractive() (*model.Composition, error) {
 		return nil, fmt.Errorf("title is required")
 	}
 
+	fmt.Print("Topic (optional): ")
+	if scanner.Scan() {
+		c.Topic = strings.TrimSpace(scanner.Text())
+	}
+
 	fmt.Print("Author (optional): ")
 	if scanner.Scan() {
 		c.Author = strings.TrimSpace(scanner.Text())
@@ -258,7 +263,7 @@ func compAnalyze(args []string) error {
 	fmt.Printf("Content length: %d chars\n", len([]rune(c.Content)))
 	fmt.Println("Sending to AI...")
 
-	items, err := llm.AnalyzeComposition(cfg, c.Content, c.Title)
+	items, err := llm.AnalyzeComposition(cfg, c.Content, c.Title, c.Topic)
 	if err != nil {
 		return fmt.Errorf("AI analysis failed: %w", err)
 	}
@@ -364,10 +369,14 @@ func compAnalyze(args []string) error {
 	fmt.Println("Analysis saved.")
 	return nil
 }
+
 func formatComp(c *model.Composition) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("ID: %s\n", c.ID))
 	b.WriteString(fmt.Sprintf("Title: %s\n", c.Title))
+	if c.Topic != "" {
+		b.WriteString(fmt.Sprintf("Topic: %s\n", c.Topic))
+	}
 	if c.Author != "" {
 		b.WriteString(fmt.Sprintf("Author: %s\n", c.Author))
 	}

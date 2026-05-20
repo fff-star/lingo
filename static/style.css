@@ -406,6 +406,50 @@ footer.container {
 .htmx-request .htmx-indicator,
 .htmx-indicator.htmx-request { display: inline; }
 
+/* ── Dictionary search ── */
+.suggestions-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+  background: var(--pico-card-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 0 0 var(--pico-border-radius) var(--pico-border-radius);
+  max-height: 380px; overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.suggestion-item {
+  padding: 0.5rem 0.75rem; cursor: pointer;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.5rem;
+}
+.suggestion-item:last-child { border-bottom: none; }
+.suggestion-item:hover,
+.suggestion-item.active {
+  background: var(--pico-primary-focus);
+}
+.suggestion-item:hover .suggestion-word,
+.suggestion-item.active .suggestion-word,
+.suggestion-item:hover .suggestion-phonetic,
+.suggestion-item.active .suggestion-phonetic,
+.suggestion-item:hover .suggestion-def,
+.suggestion-item.active .suggestion-def {
+  color: var(--pico-primary-inverse);
+}
+.suggestions-dropdown .tag {
+  font-size: 0.65em;
+  padding: 0.05em 0.4em;
+  border: 1px solid var(--pico-muted-border-color);
+  background: transparent;
+  color: var(--pico-muted-color);
+}
+.suggestion-item:hover .tag,
+.suggestion-item.active .tag {
+  border-color: var(--pico-primary-inverse);
+  color: var(--pico-primary-inverse);
+}
+.suggestion-word { font-weight: 600; }
+.suggestion-phonetic { font-size: 0.8em; opacity: 0.65; }
+.suggestion-def { font-size: 0.82em; opacity: 0.8; }
+.suggestion-tags { display: flex; gap: 0.2rem; flex-wrap: wrap; margin-left: auto; }
+
 /* ── Mobile ── */
 @media (max-width: 640px) {
   nav ul { gap: 0.75rem; }

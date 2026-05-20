@@ -19,7 +19,7 @@ func NewCompositionStore(db *sql.DB) CompositionStore {
 }
 
 func (s *sqliteCompositionStore) Load() ([]model.Composition, error) {
-	rows, err := s.db.Query(`SELECT id, title, author, content, tags, notes, ai_analysis,
+	rows, err := s.db.Query(`SELECT id, title, topic, author, content, tags, notes, ai_analysis,
 		created_at, updated_at FROM compositions ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -31,14 +31,17 @@ func (s *sqliteCompositionStore) Load() ([]model.Composition, error) {
 func (s *sqliteCompositionStore) Add(c model.Composition) error {
 	var aiStr *string
 	if c.AIAnalysis != nil {
-		b, _ := json.Marshal(c.AIAnalysis)
+		b, err := json.Marshal(c.AIAnalysis)
+		if err != nil {
+			return fmt.Errorf("marshal ai_analysis: %w", err)
+		}
 		s := string(b)
 		aiStr = &s
 	}
 	_, err := s.db.Exec(`INSERT INTO compositions
-		(id, title, author, content, tags, notes, ai_analysis, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Title, c.Author, c.Content,
+		(id, title, topic, author, content, tags, notes, ai_analysis, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, c.Title, c.Topic, c.Author, c.Content,
 		jsonArr(c.Tags), c.Notes, aiStr,
 		fmtTime(c.CreatedAt), fmtTime(c.UpdatedAt),
 	)
@@ -52,7 +55,7 @@ func (s *sqliteCompositionStore) Add(c model.Composition) error {
 }
 
 func (s *sqliteCompositionStore) Get(idPrefix string) (*model.Composition, error) {
-	c, err := scanComposition(s.db.QueryRow(`SELECT id, title, author, content, tags, notes, ai_analysis,
+	c, err := scanComposition(s.db.QueryRow(`SELECT id, title, topic, author, content, tags, notes, ai_analysis,
 		created_at, updated_at FROM compositions WHERE id = ?`,
 		idPrefix))
 	if err == nil {
@@ -62,7 +65,7 @@ func (s *sqliteCompositionStore) Get(idPrefix string) (*model.Composition, error
 		return nil, err
 	}
 
-	rows, err := s.db.Query(`SELECT id, title, author, content, tags, notes, ai_analysis,
+	rows, err := s.db.Query(`SELECT id, title, topic, author, content, tags, notes, ai_analysis,
 		created_at, updated_at FROM compositions WHERE id LIKE ? LIMIT 1`,
 		idPrefix+"%")
 	if err != nil {
@@ -83,13 +86,16 @@ func (s *sqliteCompositionStore) Get(idPrefix string) (*model.Composition, error
 func (s *sqliteCompositionStore) Update(c model.Composition) error {
 	var aiStr *string
 	if c.AIAnalysis != nil {
-		b, _ := json.Marshal(c.AIAnalysis)
+		b, err := json.Marshal(c.AIAnalysis)
+		if err != nil {
+			return fmt.Errorf("marshal ai_analysis: %w", err)
+		}
 		s := string(b)
 		aiStr = &s
 	}
-	result, err := s.db.Exec(`UPDATE compositions SET title=?, author=?, content=?, tags=?, notes=?,
+	result, err := s.db.Exec(`UPDATE compositions SET title=?, topic=?, author=?, content=?, tags=?, notes=?,
 		ai_analysis=?, updated_at=? WHERE id=?`,
-		c.Title, c.Author, c.Content, jsonArr(c.Tags), c.Notes, aiStr,
+		c.Title, c.Topic, c.Author, c.Content, jsonArr(c.Tags), c.Notes, aiStr,
 		fmtTime(c.UpdatedAt), c.ID,
 	)
 	if err != nil {
@@ -122,7 +128,7 @@ func (s *sqliteCompositionStore) Search(keywords []string, tags []string) ([]mod
 	}
 
 	// For search, exclude the heavy content column.
-	query := `SELECT id, title, author, '' as content, tags, notes, ai_analysis,
+	query := `SELECT id, title, topic, author, '' as content, tags, notes, ai_analysis,
 		created_at, updated_at FROM compositions WHERE 1=1`
 	var args []interface{}
 
@@ -159,7 +165,7 @@ func (s *sqliteCompositionStore) ftsSearch(keywords, tags []string) ([]model.Com
 	}
 	ftsQuery := strings.Join(ftsTerms, " ")
 
-	sql := `SELECT c.id, c.title, c.author, '' as content, c.tags, c.notes, c.ai_analysis,
+	sql := `SELECT c.id, c.title, c.topic, c.author, '' as content, c.tags, c.notes, c.ai_analysis,
 		c.created_at, c.updated_at
 		FROM compositions c
 		INNER JOIN compositions_fts f ON c.rowid = f.rowid
@@ -216,7 +222,7 @@ func scanComposition(row interface{ Scan(...interface{}) error }) (model.Composi
 	var aiStr *string
 	var ca, ua string
 	err := row.Scan(
-		&c.ID, &c.Title, &c.Author, &c.Content,
+		&c.ID, &c.Title, &c.Topic, &c.Author, &c.Content,
 		&tgs, &c.Notes, &aiStr, &ca, &ua,
 	)
 	if err != nil {

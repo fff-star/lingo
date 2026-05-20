@@ -11,6 +11,7 @@ type WordInfo struct {
 	AudioURL       string
 	Definitions    []model.Definition // MW English definitions
 	ECDefinitions  []model.Definition // ECDICT Chinese definitions
+	ECTag          string             // ECDICT edu tags: cet4, toefl, gre, etc.
 	Examples       []string
 	Inflections    []model.Inflection
 }
@@ -43,6 +44,7 @@ func Lookup(word string) (*WordInfo, error) {
 	// 2. ECDICT lookup (Chinese definitions, best-effort).
 	if ec, ecErr := LookupECDICT(word); ecErr == nil {
 		info.ECDefinitions = ec.Definitions
+		info.ECTag = ec.Tag
 		if info.Phonetic == "" && ec.Phonetic != "" {
 			info.Phonetic = ec.Phonetic
 		}

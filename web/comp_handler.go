@@ -77,7 +77,8 @@ func (s *Server) handleCompositionAdd(w http.ResponseWriter, r *http.Request) {
 	c := model.Composition{
 		ID:        store.NewID("cp"),
 		Title:     title,
-		Author:    strings.TrimSpace(r.FormValue("author")),
+			Topic:     strings.TrimSpace(r.FormValue("topic")),
+			Author:    strings.TrimSpace(r.FormValue("author")),
 		Content:   strings.TrimSpace(r.FormValue("content")),
 		Tags:      []string{},
 		Notes:     strings.TrimSpace(r.FormValue("notes")),
@@ -143,6 +144,7 @@ func (s *Server) handleCompositionUpdate(w http.ResponseWriter, r *http.Request)
 	}
 
 	c.Title = strings.TrimSpace(r.FormValue("title"))
+	c.Topic = strings.TrimSpace(r.FormValue("topic"))
 	c.Author = strings.TrimSpace(r.FormValue("author"))
 	c.Content = strings.TrimSpace(r.FormValue("content"))
 	c.Notes = strings.TrimSpace(r.FormValue("notes"))
@@ -191,7 +193,7 @@ func (s *Server) handleCompositionProcess(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	items, err := llm.AnalyzeComposition(cfg, comp.Content, comp.Title)
+	items, err := llm.AnalyzeComposition(cfg, comp.Content, comp.Title, comp.Topic)
 	if err != nil {
 		http.Error(w, "AI analysis failed: "+err.Error(), 500)
 		return
@@ -255,7 +257,7 @@ func (s *Server) handleCompositionProcessSSE(w http.ResponseWriter, r *http.Requ
 
 	send("progress", "Connected to LLM, sending request (this may take several minutes for long texts)...")
 
-	items, err := llm.AnalyzeComposition(cfg, comp.Content, comp.Title)
+	items, err := llm.AnalyzeComposition(cfg, comp.Content, comp.Title, comp.Topic)
 	if err != nil {
 		send("error", "AI analysis failed: "+err.Error())
 		return
@@ -277,7 +279,10 @@ func (s *Server) handleCompositionProcessSSE(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	comp.UpdatedAt = time.Now().UTC()
-	_ = s.Compositions.Update(*comp)
+	if err := s.Compositions.Update(*comp); err != nil {
+		send("error", "failed to save analysis: "+err.Error())
+		return
+	}
 
 	send("done", "/compositions/"+id)
 }

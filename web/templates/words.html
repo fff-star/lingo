@@ -8,20 +8,24 @@
     <input name="q" type="search" placeholder="Search or look up a word..." style="flex:1">
   </form>
   {{else}}
-  <form hx-get="/words" hx-target="#word-list" hx-trigger="change from:#word-tag, search from:#word-search delay:400ms" style="flex:1;display:flex;gap:0.5em">
-    <input id="word-search" name="q" type="search" placeholder="Search or look up a word..." value="{{.Query}}" data-fuzzy-target="#word-list tbody" style="flex:1">
-    <select id="word-tag" name="tag" style="width:150px">
-      <option value="">All tags</option>
-      {{range .AllTags}}
-        <option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>
-      {{end}}
-    </select>
-  </form>
+  <div style="flex:1;display:flex;flex-direction:column;position:relative">
+    <form hx-get="/words" hx-target="#word-list" hx-trigger="change from:#word-tag, search from:#word-search delay:400ms" style="display:flex;gap:0.5em">
+      <input id="word-search" name="q" type="search" placeholder="Type to search ECDICT or filter vocabulary..." value="{{.Query}}" data-fuzzy-target="#word-list tbody" style="flex:1" autocomplete="off">
+      <select id="word-tag" name="tag" style="width:150px">
+        <option value="">All tags</option>
+        {{range .AllTags}}
+          <option value="{{.}}" {{if eq $.Tag .}}selected{{end}}>{{.}}</option>
+        {{end}}
+      </select>
+    </form>
+    <div id="dict-suggestions" class="suggestions-dropdown" hidden></div>
+  </div>
   {{end}}
 </div>
 {{end}}
 
 <div id="word-list">
+  <div id="dict-lookup-panel"></div>
   {{if .Detail}}
     <div id="detail-view">
     <article>
@@ -183,4 +187,148 @@
     <p><small id="word-list-count" style="opacity:0.4">{{len .Words}} words</small></p>
   {{end}}
 </div>
+
+{{if not .Detail}}
+<script>
+(function() {
+  const input = document.getElementById('word-search');
+  const dropdown = document.getElementById('dict-suggestions');
+  const panel = document.getElementById('dict-lookup-panel');
+  if (!input || !dropdown) return;
+
+  let activeIdx = -1;
+  let results = [];
+  let pending = null;
+
+  function hide() {
+    dropdown.hidden = true;
+    activeIdx = -1;
+    results = [];
+    if (pending) { pending = null; }
+  }
+
+  function render() {
+    dropdown.innerHTML = '';
+    activeIdx = -1;
+    if (results.length === 0) {
+      dropdown.hidden = true;
+      return;
+    }
+    results.forEach(function(entry, i) {
+      var div = document.createElement('div');
+      div.className = 'suggestion-item';
+      var defs = entry.definitions || [];
+      var defHtml = '';
+      for (var d = 0; d < Math.min(defs.length, 3); d++) {
+        var pos = defs[d].pos ? '<strong>' + escapeHtml(defs[d].pos) + '</strong> ' : '';
+        defHtml += '<span class="suggestion-def">' + pos + escapeHtml(defs[d].meaning) + '</span>';
+      }
+      var tags = (entry.tag || '').trim().split(/\s+/).filter(Boolean);
+      var tagHtml = '';
+      for (var t = 0; t < tags.length; t++) {
+        tagHtml += '<span class="tag">' + escapeHtml(tags[t]) + '</span>';
+      }
+      div.innerHTML =
+        '<span class="suggestion-word">' + escapeHtml(entry.word) + '</span>' +
+        (entry.phonetic ? '<span class="suggestion-phonetic">' + escapeHtml(entry.phonetic) + '</span>' : '') +
+        defHtml +
+        (tagHtml ? '<span class="suggestion-tags">' + tagHtml + '</span>' : '');
+      div.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        selectEntry(i);
+      });
+      div.addEventListener('mouseenter', function() {
+        setActive(i);
+      });
+      dropdown.appendChild(div);
+    });
+    dropdown.hidden = false;
+  }
+
+  function setActive(idx) {
+    var items = dropdown.querySelectorAll('.suggestion-item');
+    items.forEach(function(item, i) {
+      item.classList.toggle('active', i === idx);
+    });
+    activeIdx = idx;
+  }
+
+  function selectEntry(idx) {
+    if (idx < 0 || idx >= results.length) return;
+    var word = results[idx].word;
+    hide();
+    input.value = word;
+    htmx.ajax('GET', '/words/lookup-panel?q=' + encodeURIComponent(word),
+      {target: '#dict-lookup-panel', swap: 'innerHTML'});
+  }
+
+  function lookupCurrent() {
+    var q = input.value.trim();
+    if (!q) return;
+    if (!dropdown.hidden && results.length > 0) {
+      var idx = activeIdx >= 0 ? activeIdx : 0;
+      selectEntry(idx);
+      return;
+    }
+    hide();
+    htmx.ajax('GET', '/words/lookup-panel?q=' + encodeURIComponent(q),
+      {target: '#dict-lookup-panel', swap: 'innerHTML'});
+  }
+
+  function escapeHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  input.addEventListener('input', function() {
+    var q = input.value.trim();
+    if (q.length < 2) { hide(); return; }
+    pending = q;
+    fetch('/words/suggest?q=' + encodeURIComponent(q))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (pending !== q) return;
+        pending = null;
+        results = data || [];
+        render();
+      })
+      .catch(function() { hide(); });
+  });
+
+  input.addEventListener('keydown', function(e) {
+    if (dropdown.hidden) {
+      if (e.key === 'Enter') { e.preventDefault(); lookupCurrent(); }
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setActive(Math.min(activeIdx + 1, results.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActive(Math.max(activeIdx - 1, 0));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        selectEntry(activeIdx >= 0 ? activeIdx : 0);
+        break;
+      case 'Escape':
+        e.preventDefault();
+        hide();
+        break;
+    }
+  });
+
+  input.addEventListener('blur', function() {
+    setTimeout(hide, 150);
+  });
+
+  input.addEventListener('focus', function() {
+    if (panel) panel.innerHTML = '';
+  });
+})();
+</script>
+{{end}}
 {{end}}

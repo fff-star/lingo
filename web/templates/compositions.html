@@ -19,6 +19,7 @@
     <legend>Add Composition</legend>
     <input name="title" placeholder="Title" required>
     <input name="author" placeholder="Author">
+    <input name="topic" placeholder="Topic (essay subject, for LLM)">
     <label>Content <textarea name="content" rows="8" placeholder="Paste text..."></textarea></label>
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <input name="tags" placeholder="Tags">
@@ -44,6 +45,7 @@
         </div>
       </div>
       <p><small style="opacity:0.5">{{.Detail.ID}}{{if .Detail.Author}} · {{.Detail.Author}}{{end}}</small></p>
+      {{if .Detail.Topic}}<p><strong>Topic:</strong> {{.Detail.Topic}}</p>{{end}}
       {{if .Detail.Tags}}<p>{{range .Detail.Tags}}<span class="tag">{{.}}</span>{{end}}</p>{{end}}
       <hr>
       <div class="markdown-body" style="white-space:pre-wrap">{{.Detail.Content}}</div>
@@ -56,6 +58,7 @@
       <legend>Edit</legend>
       <input name="title" value="{{.Detail.Title}}" required>
       <input name="author" value="{{.Detail.Author}}" placeholder="Author">
+      <input name="topic" value="{{.Detail.Topic}}" placeholder="Topic (essay subject, for LLM)">
       <label>Content <textarea name="content" rows="8">{{.Detail.Content}}</textarea></label>
       <div class="grid" style="grid-template-columns:1fr 1fr">
         <input name="tags" value="{{join .Detail.Tags ", "}}" placeholder="Tags">
@@ -84,6 +87,48 @@
       {{if .Detail.AIAnalysis.ModelEssay}}
       <h4>Model Essay</h4>
       <div class="markdown-body">{{.Detail.AIAnalysis.ModelEssay}}</div>
+      {{end}}
+
+      {{if .Detail.AIAnalysis.ModelEssay2}}
+      <h4>Model Essay 2 <small style="opacity:0.5">(Independent — same topic, fresh perspective)</small></h4>
+      <div class="markdown-body">{{.Detail.AIAnalysis.ModelEssay2.Essay}}</div>
+
+      {{if .Detail.AIAnalysis.ModelEssay2.Words}}
+      <h5>Words</h5>
+      {{range .Detail.AIAnalysis.ModelEssay2.Words}}
+      <div class="ai-block">
+        <strong>{{.Word}}</strong>
+        {{range .Definitions}}<span class="tag">[{{.Pos}}] {{.Meaning}}</span>{{end}}
+        {{if .Example}}<p style="opacity:0.7;margin:0.25rem 0">📝 {{.Example}}</p>{{end}}
+        {{if .Synonyms}}<p style="opacity:0.6;font-size:var(--s)">Synonyms: {{join .Synonyms ", "}}</p>{{end}}
+        {{if .Notes}}<p style="margin-top:0.25rem"><small>{{.Notes}}</small></p>{{end}}
+      </div>
+      {{end}}
+      {{end}}
+
+      {{if .Detail.AIAnalysis.ModelEssay2.Phrases}}
+      <h5>Phrases</h5>
+      {{range .Detail.AIAnalysis.ModelEssay2.Phrases}}
+      <div class="ai-block">
+        <strong>{{.Phrase}}</strong> <span class="tag" style="font-size:0.7em">{{.Type}}</span>
+        <p style="opacity:0.8;margin:0.15rem 0">{{.Definition}}</p>
+        {{if .Example}}<p style="opacity:0.7;margin:0.25rem 0">📝 {{.Example}}</p>{{end}}
+        {{if .Notes}}<p style="margin-top:0.25rem"><small>{{.Notes}}</small></p>{{end}}
+      </div>
+      {{end}}
+      {{end}}
+
+      {{if .Detail.AIAnalysis.ModelEssay2.Sentences}}
+      <h5>Sentences</h5>
+      {{range .Detail.AIAnalysis.ModelEssay2.Sentences}}
+      <div class="ai-block">
+        <p style="margin:0.15rem 0">{{.Text}}</p>
+        {{if .Translation}}<p style="opacity:0.6;margin:0.15rem 0">翻译：{{.Translation}}</p>{{end}}
+        {{if .Why}}<p style="margin-top:0.25rem"><small>{{.Why}}</small></p>{{end}}
+        {{if .SuggestedTags}}{{range .SuggestedTags}}<span class="tag" style="font-size:0.65em">{{.}}</span>{{end}}{{end}}
+      </div>
+      {{end}}
+      {{end}}
       {{end}}
     </article>
     {{end}}

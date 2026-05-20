@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 	"time"
@@ -386,8 +387,11 @@ func (s *Server) handleWordQuickAdd(w http.ResponseWriter, r *http.Request) {
 		wm.Phonetic = info.Phonetic
 		wm.AudioURL = info.AudioURL
 		wm.Definitions = info.Definitions
-			wm.ECDictDefs = info.ECDefinitions
+		wm.ECDictDefs = info.ECDefinitions
 		wm.Examples = info.Examples
+		if info.ECTag != "" {
+			wm.Tags = strings.Fields(info.ECTag)
+		}
 		for _, inf := range info.Inflections {
 			if inf.Form == "synonym" {
 				wm.Synonyms = append(wm.Synonyms, inf.Value)
@@ -518,4 +522,101 @@ func (s *Server) handleWordLookup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(info)
+}
+
+func (s *Server) handleWordSuggest(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(q) < 2 {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, "[]")
+		return
+	}
+
+	results, err := dict.SearchECDICT(q, 15)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	if results == nil {
+		results = []dict.ECDICTEntry{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (s *Server) handleWordLookupPanel(w http.ResponseWriter, r *http.Request) {
+	word := strings.TrimSpace(r.URL.Query().Get("q"))
+	if word == "" {
+		http.Error(w, "missing q param", 400)
+		return
+	}
+
+	info, err := dict.Lookup(word)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprintf(w, `<article><p style="opacity:0.5">No results for "<strong>%s</strong>"</p></article>`, html.EscapeString(word))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, `<article>`)
+	fmt.Fprint(w, `<div class="detail-header">`)
+	fmt.Fprintf(w, `<h2>%s</h2>`, html.EscapeString(info.Word))
+	fmt.Fprint(w, `<div class="detail-actions">`)
+	fmt.Fprintf(w, `<button hx-post="/words/quick-add" hx-vals='{"word":"%s"}' hx-swap="none">+ Add</button>`, html.EscapeString(info.Word))
+	fmt.Fprint(w, `</div></div>`)
+
+	if info.Phonetic != "" {
+		fmt.Fprintf(w, `<p style="font-size:var(--m)"><code>%s</code>`, html.EscapeString(info.Phonetic))
+		if info.AudioURL != "" {
+			fmt.Fprintf(w, ` <a href="#" onclick="new Audio('%s').play();return false" style="text-decoration:none" title="Play pronunciation">🔊</a>`, html.EscapeString(info.AudioURL))
+		}
+		fmt.Fprint(w, `</p>`)
+	}
+
+	if len(info.ECDefinitions) > 0 {
+		fmt.Fprint(w, `<h4>Chinese Definitions</h4><ul>`)
+		for _, d := range info.ECDefinitions {
+			if d.Pos != "" {
+				fmt.Fprintf(w, `<li><strong>%s</strong> %s</li>`, html.EscapeString(d.Pos), html.EscapeString(d.Meaning))
+			} else {
+				fmt.Fprintf(w, `<li>%s</li>`, html.EscapeString(d.Meaning))
+			}
+		}
+		fmt.Fprint(w, `</ul>`)
+	}
+	if len(info.Definitions) > 0 {
+		fmt.Fprint(w, `<h4>Definitions</h4><ul>`)
+		for _, d := range info.Definitions {
+			fmt.Fprintf(w, `<li><strong>%s</strong> %s</li>`, html.EscapeString(d.Pos), html.EscapeString(d.Meaning))
+		}
+		fmt.Fprint(w, `</ul>`)
+	}
+	if len(info.Examples) > 0 {
+		fmt.Fprint(w, `<h4>Examples</h4><ul>`)
+		for _, ex := range info.Examples {
+			fmt.Fprintf(w, `<li><em>%s</em></li>`, html.EscapeString(ex))
+		}
+		fmt.Fprint(w, `</ul>`)
+	}
+	if len(info.Inflections) > 0 {
+		fmt.Fprint(w, `<h4>Inflections</h4><dl class="inflection-list">`)
+		for _, inf := range info.Inflections {
+			fmt.Fprint(w, `<div class="inflection-row">`)
+			fmt.Fprintf(w, `<dt class="inflection-form">%s</dt>`, html.EscapeString(inf.Form))
+			fmt.Fprintf(w, `<dd class="inflection-value">%s</dd>`, html.EscapeString(inf.Value))
+			fmt.Fprint(w, `</div>`)
+		}
+		fmt.Fprint(w, `</dl>`)
+	}
+	if info.ECTag != "" {
+		fmt.Fprint(w, `<p style="margin-top:0.5rem">`)
+		for _, t := range strings.Fields(info.ECTag) {
+			fmt.Fprintf(w, `<span class="tag">%s</span>`, html.EscapeString(t))
+		}
+		fmt.Fprint(w, `</p>`)
+	}
+	fmt.Fprintf(w, `<p style="opacity:0.5;margin-top:1rem"><small>Not in your vocabulary. Click <strong>+ Add</strong> to save it.</small></p>`)
+	fmt.Fprint(w, `</article>`)
 }

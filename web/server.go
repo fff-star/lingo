@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 
@@ -60,6 +61,8 @@ func (s *Server) Register(mux *http.ServeMux, staticFS fs.FS) {
 	mux.HandleFunc("GET /words", s.handleWords)
 	mux.HandleFunc("GET /words/lookup", s.handleWordLookup)
 	mux.HandleFunc("GET /words/check", s.handleWordCheck)
+	mux.HandleFunc("GET /words/suggest", s.handleWordSuggest)
+	mux.HandleFunc("GET /words/lookup-panel", s.handleWordLookupPanel)
 	mux.HandleFunc("POST /words/quick-add", s.handleWordQuickAdd)
 	mux.HandleFunc("POST /words/add", s.handleWordAdd)
 	mux.HandleFunc("POST /words/batch", s.handleWordBatch)
@@ -133,13 +136,24 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 }
 
 func (s *Server) MustLoad() {
-	// Preload all data to ensure files exist.
-	s.Words.Load()
-	s.Phrases.Load()
-	s.Sentences.Load()
-	s.Articles.Load()
-	s.Compositions.Load()
-	s.Tags.Load()
+	if _, err := s.Words.Load(); err != nil {
+		log.Printf("load words: %v", err)
+	}
+	if _, err := s.Phrases.Load(); err != nil {
+		log.Printf("load phrases: %v", err)
+	}
+	if _, err := s.Sentences.Load(); err != nil {
+		log.Printf("load sentences: %v", err)
+	}
+	if _, err := s.Articles.Load(); err != nil {
+		log.Printf("load articles: %v", err)
+	}
+	if _, err := s.Compositions.Load(); err != nil {
+		log.Printf("load compositions: %v", err)
+	}
+	if _, err := s.Tags.Load(); err != nil {
+		log.Printf("load tags: %v", err)
+	}
 }
 
 func setupSSE(w http.ResponseWriter) (func(event, data string), error) {

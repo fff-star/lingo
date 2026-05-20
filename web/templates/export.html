@@ -18,14 +18,23 @@
     <h3>{{.ArticleCount}}</h3>
     <p>Articles</p>
   </article>
+  <article>
+    <h3>{{.CompositionCount}}</h3>
+    <p>Compositions</p>
+  </article>
 </div>
 
 <form method="POST" action="/export">
   <fieldset>
     <legend>Select types to export</legend>
-    <label><input type="checkbox" name="type" value="word" checked> Words</label>
-    <label><input type="checkbox" name="type" value="phrase" checked> Phrases</label>
-    <label><input type="checkbox" name="type" value="sentence" checked> Sentences</label>
+    <label><input type="checkbox" name="type" value="word" checked class="export-type"> Words</label>
+    <label><input type="checkbox" name="type" value="phrase" class="export-type"> Phrases</label>
+    <label><input type="checkbox" name="type" value="sentence" class="export-type"> Sentences</label>
+    <label><input type="checkbox" name="type" value="article" class="export-type"> Articles</label>
+    <label><input type="checkbox" name="type" value="composition" class="export-type"> Compositions</label>
+    <p class="hint" id="latex-hint" style="display:none; color: var(--pico-muted-color); font-size: 0.85em; margin-top: 0.5rem;">
+      LaTeX/PDF export supports one type at a time. Only the first selected type will be used.
+    </p>
   </fieldset>
 
   <fieldset>
@@ -42,8 +51,52 @@
     <legend>Format</legend>
     <label><input type="radio" name="format" value="text" checked> Tab-separated Text</label>
     <label><input type="radio" name="format" value="csv"> CSV</label>
+    <label><input type="radio" name="format" value="tex" class="latex-format"> LaTeX (.tex)</label>
+    <label><input type="radio" name="format" value="pdf" class="latex-format"> PDF</label>
   </fieldset>
 
   <button type="submit">Download</button>
 </form>
+
+<script>
+(function() {
+  const latexFormats = document.querySelectorAll('.latex-format');
+  const typeCheckboxes = document.querySelectorAll('.export-type');
+  const hint = document.getElementById('latex-hint');
+
+  function isLatex() {
+    return document.querySelector('input[name="format"]:checked')?.classList.contains('latex-format');
+  }
+
+  function updateUI() {
+    const latex = isLatex();
+    hint.style.display = latex ? 'block' : 'none';
+    if (latex) {
+      let firstFound = false;
+      typeCheckboxes.forEach(cb => {
+        if (cb.checked && !firstFound) {
+          firstFound = true;
+        } else if (cb.checked) {
+          cb.checked = false;
+        }
+        if (!firstFound) {
+          cb.disabled = false;
+        }
+      });
+    } else {
+      typeCheckboxes.forEach(cb => { cb.disabled = false; });
+    }
+  }
+
+  typeCheckboxes.forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (isLatex()) updateUI();
+    });
+  });
+
+  document.querySelectorAll('input[name="format"]').forEach(r => {
+    r.addEventListener('change', updateUI);
+  });
+})();
+</script>
 {{end}}

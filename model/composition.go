@@ -10,7 +10,16 @@ type AIAnalysis struct {
 	Sentences     []ExtractedSentence `json:"sentences"`
 	GrammarErrors []GrammarError      `json:"grammar_errors"`
 	ModelEssay    string              `json:"model_essay,omitempty"`
+	ModelEssay2   *ModelEssay2        `json:"model_essay_2,omitempty"`
 	SuggestedTags []string            `json:"suggested_tags"`
+}
+
+// ModelEssay2 is an independent model essay on the same topic, with its own extracted vocabulary.
+type ModelEssay2 struct {
+	Essay     string              `json:"essay"`
+	Words     []ExtractedWord     `json:"words"`
+	Phrases   []ExtractedPhrase   `json:"phrases"`
+	Sentences []ExtractedSentence `json:"sentences"`
 }
 
 // GrammarError is a grammar/wording error found by AI analysis.
@@ -53,7 +62,8 @@ type ExtractedSentence struct {
 type Composition struct {
 	ID         string      `json:"id"`
 	Title      string      `json:"title"`
-	Author     string      `json:"author"`
+	Topic      string      `json:"topic,omitempty"`
+	Author     string      `json:"author,omitempty"`
 	Content    string      `json:"content"`
 	Tags       []string    `json:"tags"`
 	Notes      string      `json:"notes"`

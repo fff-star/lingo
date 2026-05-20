@@ -45,6 +45,7 @@ type ECDICTResult struct {
 	Word        string
 	Phonetic    string
 	Definitions []model.Definition
+	Tag         string // space-separated edu tags: cet4, toefl, gre, etc.
 }
 
 // LookupECDICT queries the ECDICT database for a word.
@@ -52,11 +53,11 @@ func LookupECDICT(word string) (*ECDICTResult, error) {
 	if ecdictDB == nil {
 		return nil, fmt.Errorf("ecdict not initialized")
 	}
-	var phonetic, translation string
+	var phonetic, translation, tag string
 	err := ecdictDB.QueryRow(
-		"SELECT phonetic, translation FROM stardict WHERE word = ? COLLATE NOCASE",
+		"SELECT phonetic, translation, tag FROM stardict WHERE word = ? COLLATE NOCASE",
 		word,
-	).Scan(&phonetic, &translation)
+	).Scan(&phonetic, &translation, &tag)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("word not found in ecdict")
 	}
@@ -67,7 +68,50 @@ func LookupECDICT(word string) (*ECDICTResult, error) {
 		Word:        word,
 		Phonetic:    cleanECPhonetic(phonetic),
 		Definitions: parseTranslation(translation),
+		Tag:         tag,
 	}, nil
+}
+
+// ECDICTEntry is a lightweight result from SearchECDICT prefix search.
+type ECDICTEntry struct {
+	Word        string             `json:"word"`
+	Phonetic    string             `json:"phonetic"`
+	Definitions []model.Definition `json:"definitions"`
+	Tag         string             `json:"tag"` // space-separated edu tags: cet4, toefl, gre, etc.
+}
+
+// SearchECDICT performs a prefix search on the ECDICT database.
+// Uses the idx_stardict_word index for fast prefix scans.
+func SearchECDICT(prefix string, limit int) ([]ECDICTEntry, error) {
+	if ecdictDB == nil {
+		return nil, fmt.Errorf("ecdict not initialized")
+	}
+	if len(prefix) < 2 {
+		return nil, nil
+	}
+	rows, err := ecdictDB.Query(
+		"SELECT word, phonetic, translation, tag FROM stardict WHERE word LIKE ? COLLATE NOCASE ORDER BY word LIMIT ?",
+		prefix+"%", limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ecdict search: %w", err)
+	}
+	defer rows.Close()
+
+	var results []ECDICTEntry
+	for rows.Next() {
+		var word, phonetic, translation, tag string
+		if err := rows.Scan(&word, &phonetic, &translation, &tag); err != nil {
+			return nil, fmt.Errorf("ecdict scan: %w", err)
+		}
+		results = append(results, ECDICTEntry{
+			Word:        word,
+			Phonetic:    cleanECPhonetic(phonetic),
+			Definitions: parseTranslation(translation),
+			Tag:         tag,
+		})
+	}
+	return results, rows.Err()
 }
 
 // parseTranslation parses the ECDICT translation field into Definition structs.
@@ -122,6 +166,14 @@ func isShortPOS(s string) bool {
 		return true
 	}
 	return false
+}
+
+// CloseECDICT closes the ECDICT database connection.
+func CloseECDICT() {
+	if ecdictDB != nil {
+		ecdictDB.Close()
+		ecdictDB = nil
+	}
 }
 
 // cleanECPhonetic normalises ECDICT phonetic notation.

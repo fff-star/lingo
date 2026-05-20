@@ -19,6 +19,15 @@ type ExtractedItems struct {
 	Sentences      []ExtractedSentence `json:"sentences"`
 	GrammarErrors  []ExtractedGrammar  `json:"grammar_errors"`
 	ModelEssay     string              `json:"model_essay"`
+	ModelEssay2    *ModelEssay2Result  `json:"model_essay_2,omitempty"`
+}
+
+// ModelEssay2Result is an independent model essay on the same topic with its own analysis.
+type ModelEssay2Result struct {
+	Essay     string              `json:"essay"`
+	Words     []ExtractedWord     `json:"words"`
+	Phrases   []ExtractedPhrase   `json:"phrases"`
+	Sentences []ExtractedSentence `json:"sentences"`
 }
 
 // ExtractedGrammar is a grammar error found by LLM analysis.
@@ -78,7 +87,7 @@ For each word:
 - "synonyms": 1–3 near-synonyms in English (can be empty array)
 - "notes": usage tip or collocation note IN CHINESE (can be empty string)
 
-Limit: 10–20 words. If none qualify, return empty array.
+Limit: 20–40 words. If fewer qualify, return fewer; do not pad with weak choices.
 
 ## Phrase Selection
 
@@ -226,6 +235,31 @@ func (e *ExtractedItems) ToAIAnalysis() *model.AIAnalysis {
 		})
 	}
 	analysis.ModelEssay = e.ModelEssay
+	if e.ModelEssay2 != nil {
+		m2 := &model.ModelEssay2{
+			Essay: e.ModelEssay2.Essay,
+		}
+		for _, w := range e.ModelEssay2.Words {
+			m2.Words = append(m2.Words, model.ExtractedWord{
+				Word: w.Word, Definitions: w.Definitions,
+				Example: w.Example, Synonyms: w.Synonyms, Notes: w.Notes,
+			})
+		}
+		for _, p := range e.ModelEssay2.Phrases {
+			m2.Phrases = append(m2.Phrases, model.ExtractedPhrase{
+				Phrase: p.Phrase, Type: p.Type, Words: p.Words,
+				Definition: p.Definition, Example: p.Example,
+				Synonyms: p.Synonyms, Notes: p.Notes,
+			})
+		}
+		for _, s := range e.ModelEssay2.Sentences {
+			m2.Sentences = append(m2.Sentences, model.ExtractedSentence{
+				Text: s.Text, Translation: s.Translation,
+				Why: s.Why, SuggestedTags: s.SuggestedTags,
+			})
+		}
+		analysis.ModelEssay2 = m2
+	}
 	for _, g := range e.GrammarErrors {
 		analysis.GrammarErrors = append(analysis.GrammarErrors, model.GrammarError{
 			Sentence:    g.Sentence,
@@ -287,6 +321,24 @@ Write a polished model version of the student's composition. Requirements:
 
 This is NOT a summary or commentary — it is the complete rewritten essay that the student can study as a reference.
 
+## Model Essay 2 (Independent — same topic, fresh writing)
+
+Write a SECOND model essay on the Topic provided by the user, completely independent of the student's composition. Requirements:
+- Do NOT reference, follow, or be constrained by the student's original essay
+- Write a fresh, well-structured English essay on the TOPIC from your own perspective
+- Cover the general themes of the topic naturally
+- Keep the length similar to the student's composition
+- This is an exemplar of good English writing on this topic for the student to study
+- If the user did not provide a topic, infer a general topic from the composition title and content
+
+After writing this essay, extract words, phrases, and sentences from it following the same rules as the student-facing analysis. Each extracted item MUST include a detailed explanation IN CHINESE explaining why the word/phrase/sentence is worth learning — its nuance, usage context, or grammatical interest.
+
+Output as "model_essay_2": an object with:
+- "essay": the full essay text
+- "words": 5–10 words from this essay, each with Chinese explanations in "notes"
+- "phrases": 3–8 phrases from this essay, each with Chinese explanations in "notes"
+- "sentences": 2–5 sentences from this essay, each with Chinese "translation" and "why"
+
 ## Word Selection
 
 Pick words that are:
@@ -300,7 +352,7 @@ For each word:
 - "synonyms": 1–3 alternative words (can be empty array)
 - "notes": usage tip or improvement suggestion IN CHINESE (can be empty string)
 
-Limit: 3–10 words.
+Limit: 10–15 words. If fewer qualify, return fewer; do not pad with weak choices.
 
 ## Phrase Selection
 
@@ -375,15 +427,46 @@ Limit: 2–6 sentences.
       "error_type": "grammar"
     }
   ],
-  "model_essay": "完整的范文（英文）"
+  "model_essay": "完整的范文（英文）",
+  "model_essay_2": {
+    "essay": "独立的范文（英文，不参考学生原文）",
+    "words": [
+      {
+        "word": "...",
+        "definitions": [{"pos": "adj.", "meaning": "中文释义"}],
+        "example": "...",
+        "synonyms": ["...", "..."],
+        "notes": "中文讲解：这个词的用法、语境、值得学习的原因"
+      }
+    ],
+    "phrases": [
+      {
+        "phrase": "...",
+        "type": "idiom",
+        "words": ["...", "..."],
+        "definition": "中文释义",
+        "example": "...",
+        "synonyms": ["...", "..."],
+        "notes": "中文讲解：这个短语的用法和语境"
+      }
+    ],
+    "sentences": [
+      {
+        "text": "...",
+        "translation": "中文翻译",
+        "why": "为什么这个句子值得学习（中文）",
+        "suggested_tags": ["...", "..."]
+      }
+    ]
+  }
 }`
 
 // AnalyzeComposition analyzes a student's composition and returns feedback.
 // Unlike ProcessArticle, results are meant to be displayed inline, not added to stores.
-func AnalyzeComposition(cfg *Config, content, title string) (*ExtractedItems, error) {
+func AnalyzeComposition(cfg *Config, content, title, topic string) (*ExtractedItems, error) {
 	input := truncateRunes(content, maxInputChars)
 
-	userMsg := fmt.Sprintf("Title: %s\n\nComposition:\n%s", title, input)
+	userMsg := fmt.Sprintf("Title: %s\nTopic: %s\n\nComposition:\n%s", title, topic, input)
 
 	messages := []Message{
 		{Role: "system", Content: compositionSystemPrompt},

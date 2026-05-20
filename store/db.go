@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -20,6 +21,13 @@ func OpenDB(dbPath string) (*sql.DB, error) {
 	}
 	// single conn avoids SQLITE_BUSY from concurrent writes in embedded mode.
 	db.SetMaxOpenConns(1)
+
+	// Set WAL auto-checkpoint to keep the WAL file small.
+	// Checkpoint after 200 pages (~800KB) or when the WAL reaches 1000 pages.
+	if _, err := db.Exec("PRAGMA wal_autocheckpoint=200"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("wal autocheckpoint: %w", err)
+	}
 
 	if err := CreateTables(db); err != nil {
 		db.Close()
@@ -119,6 +127,7 @@ func CreateTables(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS compositions (
 		id TEXT PRIMARY KEY,
 		title TEXT NOT NULL,
+		topic TEXT NOT NULL DEFAULT '',
 		author TEXT NOT NULL DEFAULT '',
 		content TEXT NOT NULL DEFAULT '',
 		tags TEXT NOT NULL DEFAULT '[]',
@@ -161,7 +170,7 @@ func CreateTables(db *sql.DB) error {
 		content=articles, content_rowid=rowid
 	);
 	CREATE VIRTUAL TABLE IF NOT EXISTS compositions_fts USING fts5(
-		title, content, notes,
+		title, topic, content, notes,
 		content=compositions, content_rowid=rowid
 	);
 
@@ -254,22 +263,22 @@ func CreateTables(db *sql.DB) error {
 	-- FTS sync triggers for compositions
 	DROP TRIGGER IF EXISTS compositions_fts_insert;
 	CREATE TRIGGER compositions_fts_insert AFTER INSERT ON compositions BEGIN
-		INSERT INTO compositions_fts(rowid, title, content, notes)
-		VALUES (new.rowid, new.title, new.content, new.notes);
+		INSERT INTO compositions_fts(rowid, title, topic, content, notes)
+		VALUES (new.rowid, new.title, new.topic, new.content, new.notes);
 	END;
 
 	DROP TRIGGER IF EXISTS compositions_fts_delete;
 	CREATE TRIGGER compositions_fts_delete AFTER DELETE ON compositions BEGIN
-		INSERT INTO compositions_fts(compositions_fts, rowid, title, content, notes)
-		VALUES ('delete', old.rowid, old.title, old.content, old.notes);
+		INSERT INTO compositions_fts(compositions_fts, rowid, title, topic, content, notes)
+		VALUES ('delete', old.rowid, old.title, old.topic, old.content, old.notes);
 	END;
 
 	DROP TRIGGER IF EXISTS compositions_fts_update;
 	CREATE TRIGGER compositions_fts_update AFTER UPDATE ON compositions BEGIN
-		INSERT INTO compositions_fts(compositions_fts, rowid, title, content, notes)
-		VALUES ('delete', old.rowid, old.title, old.content, old.notes);
-		INSERT INTO compositions_fts(rowid, title, content, notes)
-		VALUES (new.rowid, new.title, new.content, new.notes);
+		INSERT INTO compositions_fts(compositions_fts, rowid, title, topic, content, notes)
+		VALUES ('delete', old.rowid, old.title, old.topic, old.content, old.notes);
+		INSERT INTO compositions_fts(rowid, title, topic, content, notes)
+		VALUES (new.rowid, new.title, new.topic, new.content, new.notes);
 	END;
 	`
 
@@ -300,6 +309,11 @@ func runMigrations(db *sql.DB) error {
 			return fmt.Errorf("migration v3: %w", err)
 		}
 	}
+	if version < 4 {
+		if err := migrateV4(db); err != nil {
+			return fmt.Errorf("migration v4: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -320,7 +334,6 @@ func migrateV1(db *sql.DB) error {
 		cols.Scan(&cid, &name, &colType, &notNull, &defaultVal, &pk)
 		if name == "audio_url" {
 			hasAudioURL = true
-			break
 		}
 	}
 	cols.Close() // must close before subsequent queries to avoid lock
@@ -421,6 +434,66 @@ func migrateV3(db *sql.DB) error {
 	return nil
 }
 
+func migrateV4(db *sql.DB) error {
+	// Add topic column to compositions.
+	cols, err := db.Query("PRAGMA table_info(compositions)")
+	if err != nil {
+		return fmt.Errorf("migration v4: %w", err)
+	}
+	hasTopic := false
+	for cols.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var defaultVal *string
+		var pk int
+		cols.Scan(&cid, &name, &colType, &notNull, &defaultVal, &pk)
+		if name == "topic" {
+			hasTopic = true
+		}
+	}
+	cols.Close()
+	if !hasTopic {
+		if _, err := db.Exec("ALTER TABLE compositions ADD COLUMN topic TEXT NOT NULL DEFAULT ''"); err != nil {
+			return fmt.Errorf("add topic: %w", err)
+		}
+	}
+	// Recreate FTS to include the new topic column.
+	if _, err := db.Exec(`
+		DROP TRIGGER IF EXISTS compositions_fts_insert;
+		DROP TRIGGER IF EXISTS compositions_fts_delete;
+		DROP TRIGGER IF EXISTS compositions_fts_update;
+		DROP TABLE IF EXISTS compositions_fts;
+		CREATE VIRTUAL TABLE compositions_fts USING fts5(
+			title, topic, content, notes,
+			content=compositions, content_rowid=rowid
+		);
+		CREATE TRIGGER compositions_fts_insert AFTER INSERT ON compositions BEGIN
+			INSERT INTO compositions_fts(rowid, title, topic, content, notes)
+			VALUES (new.rowid, new.title, new.topic, new.content, new.notes);
+		END;
+		CREATE TRIGGER compositions_fts_delete AFTER DELETE ON compositions BEGIN
+			INSERT INTO compositions_fts(compositions_fts, rowid, title, topic, content, notes)
+			VALUES ('delete', old.rowid, old.title, old.topic, old.content, old.notes);
+		END;
+		CREATE TRIGGER compositions_fts_update AFTER UPDATE ON compositions BEGIN
+			INSERT INTO compositions_fts(compositions_fts, rowid, title, topic, content, notes)
+			VALUES ('delete', old.rowid, old.title, old.topic, old.content, old.notes);
+			INSERT INTO compositions_fts(rowid, title, topic, content, notes)
+			VALUES (new.rowid, new.title, new.topic, new.content, new.notes);
+		END;
+	`); err != nil {
+		return fmt.Errorf("rebuild compositions_fts v4: %w", err)
+	}
+	if _, err := db.Exec("INSERT INTO compositions_fts(compositions_fts) VALUES('rebuild')"); err != nil {
+		return fmt.Errorf("repopulate compositions_fts v4: %w", err)
+	}
+	if _, err := db.Exec("INSERT INTO schema_version(version) VALUES (4)"); err != nil {
+		return fmt.Errorf("record v4: %w", err)
+	}
+	return nil
+}
+
 func fmtTime(t time.Time) string {
 	if t.IsZero() {
 		return "0001-01-01T00:00:00Z"
@@ -431,4 +504,14 @@ func fmtTime(t time.Time) string {
 func parseTime(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, s)
 	return t
+}
+
+// CloseDB checkpoints the WAL and closes the database.
+func CloseDB(db *sql.DB) error {
+	db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	if err := db.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "db close: %v\n", err)
+		return err
+	}
+	return nil
 }

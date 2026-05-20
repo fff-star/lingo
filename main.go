@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
+	"time"
 
 	"lingo/cli"
 	"lingo/dict"
@@ -47,14 +51,18 @@ func dataDirFromEnv() string {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	dataDir := dataDirFromEnv()
 
 	db, err := store.OpenDB(filepath.Join(dataDir, "lingo.db"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "db: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
-	defer db.Close()
+	defer store.CloseDB(db)
 
 	// Initialize ECDICT (optional English-Chinese dictionary).
 	ecdictPath := os.Getenv("ECDICT_DB_PATH")
@@ -64,6 +72,7 @@ func main() {
 	if err := dict.InitECDICT(ecdictPath); err != nil {
 		fmt.Fprintf(os.Stderr, "ecdict: %v (Chinese definitions unavailable)\n", err)
 	}
+	defer dict.CloseECDICT()
 
 	ws := store.NewWordStore(db)
 	ps := store.NewPhraseStore(db)
@@ -80,25 +89,52 @@ func main() {
 	cli.InitComp(cs)
 	cli.InitTag(ts)
 
-	// Set up web server starter.
+	// Set up web server starter with graceful shutdown.
 	webServer := func(port string) {
 		srv, err := web.New(ws, ps, ss, as, cs, ts, rl, templateFiles)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "web: %v\n", err)
-			os.Exit(1)
+			return
 		}
 		srv.MustLoad()
 
 		mux := http.NewServeMux()
 		srv.Register(mux, staticFiles)
 
+		httpServer := &http.Server{Addr: ":" + port, Handler: mux}
+
+		serverErr := make(chan error, 1)
+		go func() {
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				serverErr <- err
+			}
+		}()
+
 		fmt.Fprintf(os.Stderr, "Listening on :%s\n", port)
-		if err := http.ListenAndServe(":"+port, mux); err != nil {
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+		select {
+		case <-sigCh:
+			fmt.Fprintf(os.Stderr, "\nShutting down...\n")
+		case err := <-serverErr:
 			fmt.Fprintf(os.Stderr, "web: %v\n", err)
-			os.Exit(1)
+		}
+
+		signal.Stop(sigCh)
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "shutdown: %v\n", err)
 		}
 	}
 	cli.InitWeb(webServer)
 
-	cli.Run(cli.Stores{})
+	if err := cli.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	return 0
 }
